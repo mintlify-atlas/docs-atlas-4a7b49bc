@@ -1,0 +1,294 @@
+---
+title: "Window management"
+description: "Creating, configuring, and updating the application window"
+---
+
+PycePlus wraps `pygame.display.set_mode` in a thin module — `UI/window.py` — that stores the window surface, background color, and display configuration globally. You create the window once with `window.new()`, then interact with it through static methods on the `Window` class.
+
+## Creating a window
+
+```python
+from PycePlus.UI import window
+
+win = window.new("My App", width=800, height=600, background_color=(20, 20, 30))
+```
+
+`window.new()` initializes the Pygame display, sets the window title, positions the window, and returns a `Window` instance. Call it once before `mainloop()`.
+
+### Parameters
+
+<ParamField path="title" type="str" required>
+  Text displayed in the window title bar and taskbar.
+</ParamField>
+
+<ParamField path="width" type="int" default="screen width − 200">
+  Window width in pixels. Defaults to the current monitor width minus 200.
+</ParamField>
+
+<ParamField path="height" type="int" default="screen height − 200">
+  Window height in pixels. Defaults to the current monitor height minus 200.
+</ParamField>
+
+<ParamField path="x" type="int" default="-1 (CENTER)">
+  Horizontal position of the window on the screen. Pass `window.CENTER` (or `-1`) to use the position Pygame assigns automatically after creation.
+</ParamField>
+
+<ParamField path="y" type="int" default="-1 (CENTER)">
+  Vertical position of the window on the screen. Pass `window.CENTER` (or `-1`) to use the position Pygame assigns automatically after creation.
+</ParamField>
+
+<ParamField path="fulls_screen" type="bool" default="False">
+  Set to `True` to open the window in full-screen mode (`pygame.FULLSCREEN`).
+</ParamField>
+
+<ParamField path="resizable" type="bool" default="False">
+  Set to `True` to allow the user to resize the window (`pygame.RESIZABLE`).
+</ParamField>
+
+<ParamField path="noframe" type="bool" default="False">
+  Set to `True` to remove the OS window decorations (title bar, border) — `pygame.NOFRAME`.
+</ParamField>
+
+<ParamField path="doublebuffer" type="bool" default="False">
+  Set to `True` to request double-buffering (`pygame.DOUBLEBUF`). Combine with `vsync=True` for smoother rendering.
+</ParamField>
+
+<ParamField path="icon" type="pygame.Surface | str | None" default="None">
+  Window icon. Accepts a `pygame.Surface` or a file path string. Currently stored but not yet applied — reserved for a future release.
+</ParamField>
+
+<ParamField path="background_color" type="tuple[int, int, int]" default="(0, 0, 0)">
+  RGB color used to fill the window surface at the start of each rendered frame. Stored as `window._COLOR` and applied by `window._WINDOW.fill(window._COLOR)` inside the main loop.
+</ParamField>
+
+<ParamField path="vsync" type="bool" default="False">
+  Enable vertical sync. Passed directly to `pygame.display.set_mode`.
+</ParamField>
+
+<ParamField path="display" type="int" default="0">
+  Monitor index for multi-monitor setups. `0` is the primary display.
+</ParamField>
+
+<ParamField path="depth" type="int" default="32">
+  Color depth in bits per pixel. `32` is the standard choice for RGBA surfaces.
+</ParamField>
+
+### The `CENTER` sentinel
+
+`window.CENTER` is the integer `-1`. When `x` or `y` equals `CENTER`, `window.new()` reads the position Pygame chose after `set_mode` and keeps it, so the window appears where the OS placed it:
+
+```python UI/window.py
+CENTER = -1
+
+cx, cy = pygame.display.get_window_position()
+if x == CENTER:
+    x = cx
+if y == CENTER:
+    y = cy
+pygame.display.set_window_position((x, y))
+```
+
+Pass explicit pixel values to override the default placement:
+
+```python app.py
+import PycePlus as pp
+
+pp.window.new("App", width=800, height=600, x=100, y=50)
+```
+
+## `Window` static methods
+
+All methods on `Window` are `@staticmethod` and operate on the internal `_WINDOW` surface. You do not need to hold the return value of `window.new()` — just call `Window.method()` directly.
+
+### `Window.blit(surface, pos)`
+
+Draws a `pygame.Surface` onto the window at the given `(x, y)` position. Use this when you need to composite a surface that is not part of the widget tree.
+
+```python
+from PycePlus.UI.window import Window
+import pygame
+
+overlay = pygame.Surface((200, 100), pygame.SRCALPHA)
+overlay.fill((255, 0, 0, 128))
+Window.blit(overlay, (50, 50))
+```
+
+### `Window.blits(sequence)`
+
+Batches multiple blits in one call. Accepts a list of `(surface, (x, y))` tuples — identical to `pygame.Surface.blits`.
+
+```python
+Window.blits([
+    (surface_a, (0, 0)),
+    (surface_b, (100, 200)),
+])
+```
+
+### `Window.clear()`
+
+Fills the window with the current `background_color`. Equivalent to what the main loop does at the start of each rendered frame.
+
+```python
+Window.clear()
+```
+
+### `Window.title(title)`
+
+Gets or sets the window title. Pass a string to update the title bar, or `None` to read the current title.
+
+```python
+current = Window.title(None)      # read
+Window.title("New Title")         # write
+```
+
+### `Window.set_icon(icon)`
+
+Sets the window icon. Accepts a file path or a `pygame.Surface`. Reserved for a future release.
+
+### `Window.screensize()`
+
+Returns the current monitor's resolution as `(width, height)`. The value is read once at import time from `pygame.display.Info()`.
+
+```python
+w, h = Window.screensize()
+print(f"monitor: {w}×{h}")
+```
+
+### `Window.window_size()`
+
+Returns the current window dimensions as `(width, height)`.
+
+```python
+w, h = Window.window_size()
+```
+
+### `Window.position(x, y)`
+
+Sets the window position. Either argument can be `None` to keep the current coordinate.
+
+```python
+Window.position(x=200, y=100)   # move window
+Window.position(y=0)            # change only vertical position
+```
+
+### `Window.get_position()`
+
+Returns the current window position as `(x, y)`.
+
+```python
+x, y = Window.get_position()
+```
+
+### `Window.get_window()`
+
+Returns the raw `pygame.Surface` (`_WINDOW`). Use this when you need direct access to the underlying Pygame surface.
+
+```python
+surface = Window.get_window()
+```
+
+### `Window.reopen(...)`
+
+Recreates the Pygame display with updated parameters. Any parameter you omit is preserved from the current configuration. This is how you resize the window, toggle full screen, or change the background color after the initial call to `window.new()`.
+
+```python
+Window.reopen(width=1280, height=720)
+Window.reopen(fulls_screen=True)
+Window.reopen(background_color=(10, 10, 60))
+```
+
+<Warning>
+  `reopen()` calls `pygame.display.set_mode` again, which recreates the surface. Any surfaces blitted manually to `_WINDOW` before the call will be lost. The widget tree is unaffected because `render.update()` redraws all widgets on the next refresh.
+</Warning>
+
+## Rendering workflow
+
+The main loop only redraws the window when `Application.REFRESH` is `True`. The typical sequence is:
+
+1. A widget changes state and calls `self.update()` → sets `Application.REFRESH = True`.
+2. On the next frame, the loop calls `Window.clear()` (via `window._WINDOW.fill(window._COLOR)`).
+3. `render.update()` composites all visible widgets for the current page.
+4. `pygame.display.flip()` pushes the frame to the screen.
+5. `Application.REFRESH` is reset to `False`.
+
+```python CORE/main.py
+if Application.REFRESH:
+    window._WINDOW.fill(window._COLOR)
+    render.update()
+
+render.exam()
+
+if Application.REFRESH:
+    pygame.display.flip()
+    Application.REFRESH = False
+```
+
+You can manually force a redraw by setting the flag directly:
+
+```python
+from PycePlus.UI import Application
+
+Application.REFRESH = True
+```
+
+## Examples
+
+### Basic window
+
+```python app.py
+import PycePlus as pp
+
+pp.window.new(
+    "Hello PycePlus",
+    width=800,
+    height=600,
+    background_color=(20, 20, 30),
+)
+
+pp.mainloop(FPS=60)
+```
+
+### Update the title in response to an event
+
+```python app.py
+import PycePlus as pp
+from PycePlus.UI.window import Window
+
+pp.window.new("My App", width=800, height=600, background_color=(20, 20, 30))
+
+score = 0
+score_frame = pp.Frame(width=200, height=60, background_color=(40, 40, 100), x=10, y=10)
+
+def on_click():
+    global score
+    score += 1
+    Window.title(f"My App — score: {score}")
+
+score_frame.bind("mouse.button.left.click", on_click)
+
+pp.mainloop(FPS=60)
+```
+
+### Resize the window with `reopen`
+
+```python app.py
+import PycePlus as pp
+from PycePlus.UI.window import Window
+from PycePlus.UI import Application
+
+pp.window.new("Resizable Demo", width=800, height=600, background_color=(20, 20, 30))
+
+btn = pp.Frame(width=160, height=50, background_color=(80, 40, 200), x=20, y=20)
+
+def go_fullscreen():
+    Window.reopen(fulls_screen=True)
+    Application.REFRESH = True
+
+btn.bind("mouse.button.left.click", go_fullscreen)
+
+pp.mainloop(FPS=60)
+```
+
+<Tip>
+  Always set `Application.REFRESH = True` after calling `Window.reopen()` so the loop redraws the scene on the new surface immediately.
+</Tip>

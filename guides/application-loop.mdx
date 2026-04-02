@@ -1,0 +1,271 @@
+---
+title: "Application loop"
+description: "How mainloop() works, FPS control, per-second callbacks, and resource monitoring"
+---
+
+`mainloop()` is the single call that drives your entire PycePlus application. It enters a `while True` loop that handles events, updates time, runs background checks, renders the widget tree, and caps the frame rate — in that order, every frame.
+
+## Signature
+
+```python
+from PycePlus.CORE.main import mainloop
+
+mainloop(
+    FPS: int = 60,
+    CALL_PER_SECOND: Callable[..., None] | None = None,
+    REVIEW_PATHS: list[str] = [],
+    REVIEW_MAIN_DIR: bool = True,
+)
+```
+
+<ParamField path="FPS" type="int" default="60">
+  Target frames per second. Stored as `Application.FPS` and passed to `pygame.time.Clock.tick()` at the end of each frame.
+</ParamField>
+
+<ParamField path="CALL_PER_SECOND" type="Callable | None" default="None">
+  A function called exactly once per wall-clock second. Use it for logic that must not run more than once per second — updating a timer label, polling external state, or logging metrics. The callback receives no arguments.
+</ParamField>
+
+<ParamField path="REVIEW_PATHS" type="list[str]" default="[]">
+  Additional directory paths to include in the file watcher. Each path is passed verbatim to `watch.init()`. The watcher emits `file.created`, `file.modified`, and `file.deleted` events whenever a tracked file changes.
+</ParamField>
+
+<ParamField path="REVIEW_MAIN_DIR" type="bool" default="True">
+  When `True`, the file watcher also monitors your application's own working directory (equivalent to passing `--main` to the watcher). Set to `False` to disable watching the main directory while still watching any paths in `REVIEW_PATHS`.
+</ParamField>
+
+## What happens each frame
+
+The loop body executes the following steps on every iteration:
+
+<Steps>
+
+<Step title="File watcher poll">
+  `watcher.poll()` is called and the result is stored in `Application.files`. Any changed paths are available as a list of `dict[str, str]` objects describing the change type and file path.
+</Step>
+
+<Step title="Event processing">
+  `events.exam()` calls `pygame.event.get()`, classifies each raw event (keyboard, mouse, window focus, quit), and dispatches registered callbacks. The global `events.Info.num` counter is incremented for each qualifying input event.
+</Step>
+
+<Step title="Time update">
+  `Time.current_ticks` is refreshed from `pygame.time.get_ticks() / 1000`. The loop then checks whether a full second has elapsed since the last tick. If it has, the per-second block runs:
+
+  1. `Time.seconds` is incremented.
+  2. `CALL_PER_SECOND()` is called if provided.
+  3. `handle_net()` checks network connectivity.
+  4. `handle_usage_memory()` samples memory and disk usage.
+  5. `handle_system_action_events()` evaluates the state machine.
+</Step>
+
+<Step title="Render">
+  If `Application.REFRESH` is `True`, the window surface is filled with `window._COLOR` (the `background_color` set in `window.new()`), and `render.update()` walks the widget tree and composites all visible widgets for the current page onto the window.
+</Step>
+
+<Step title="Event hit-testing">
+  `render.exam()` runs regardless of `REFRESH`. It checks mouse position against the render list and dispatches per-widget hover, click, and release callbacks.
+</Step>
+
+<Step title="Flip and reset">
+  If `Application.REFRESH` was `True`, `pygame.display.flip()` pushes the framebuffer to the screen and `Application.REFRESH` is reset to `False`. If nothing requested a refresh this frame the display is not touched.
+</Step>
+
+<Step title="FPS tick">
+  `CLOCK.tick(Application.FPS)` sleeps for however long is needed to maintain the target frame rate.
+</Step>
+
+</Steps>
+
+<Note>
+  `mainloop()` does not return. All setup — window creation, widget construction, event registration — must happen before you call it.
+</Note>
+
+## `CALL_PER_SECOND`
+
+The callback fires inside the per-second block, before networking and resource checks. It is a plain Python callable that receives no arguments.
+
+```python app.py
+import PycePlus as pp
+
+pp.window.new("App", width=800, height=600)
+
+elapsed = 0
+
+def every_second():
+    global elapsed
+    elapsed += 1
+    print(f"running for {elapsed}s")
+
+pp.mainloop(FPS=60, CALL_PER_SECOND=every_second)
+```
+
+<Tip>
+  You can use `CALL_PER_SECOND` to update a heads-up display, sync game state to a server, or trigger saves — anything that should happen on a one-second cadence rather than every frame.
+</Tip>
+
+## File watching
+
+`REVIEW_MAIN_DIR=True` (the default) watches the directory your script runs from. Pass additional paths in `REVIEW_PATHS` to watch other locations.
+
+```python app.py
+import PycePlus as pp
+
+pp.window.new("App", width=800, height=600)
+pp.events.register_event("file.modified", lambda t, path: print(f"changed: {path}"))
+
+pp.mainloop(
+    FPS=60,
+    REVIEW_PATHS=["/home/user/assets", "/home/user/config"],
+    REVIEW_MAIN_DIR=True,
+)
+```
+
+The watcher is initialized once before the loop starts. `Application.files` is updated every frame with whatever `watcher.poll()` returns for that tick.
+
+## Application state machine
+
+`handle_system_action_events()` is called once per second and transitions `Application.state` between three values based on `events.Info.num` — the count of qualifying input events accumulated during the last second.
+
+```python CORE/main.py
+def handle_system_action_events():
+    state = Application.state
+
+    if state == 'busy':
+        if events.Info.num == 0:
+            _EV.emit('system.idle', Time.current_ticks)
+            Application.state = 'idle'
+    elif state == 'idle':
+        if events.Info.num > 0:
+            _EV.emit('system.resume', Time.current_ticks)
+            Application.state = 'busy'
+        elif Time.wait('system.idle.timewait', 10, reset=True):
+            _EV.emit('system.suspend', Time.current_ticks)
+            Application.state = 'suspended'
+    elif state == 'suspended':
+        if events.Info.num > 0:
+            _EV.emit('system.resume', Time.current_ticks)
+            Application.state = 'busy'
+```
+
+| From        | Condition                              | To          | Event emitted    |
+| ----------- | -------------------------------------- | ----------- | ---------------- |
+| `busy`      | No events for one second               | `idle`      | `system.idle`    |
+| `idle`      | At least one event arrives             | `busy`      | `system.resume`  |
+| `idle`      | Still no events after 10 ticks         | `suspended` | `system.suspend` |
+| `suspended` | At least one event arrives             | `busy`      | `system.resume`  |
+
+The app starts in `'busy'` state. After the state check, `events.Info.num` is reset to zero for the next second.
+
+```python app.py
+import PycePlus as pp
+
+pp.window.new("App", width=800, height=600)
+pp.events.register_event("system.idle",    lambda t: print("user went idle"))
+pp.events.register_event("system.suspend", lambda t: print("suspending background work"))
+pp.events.register_event("system.resume",  lambda t: print("activity resumed"))
+
+pp.mainloop(FPS=60)
+```
+
+## Memory and disk monitoring
+
+`handle_usage_memory()` runs once per second. It samples system memory, process memory, system disk, and process disk usage, then emits change events if any value has shifted. If available system memory falls below **20%** of total (`MEMORY_LOW_FACTOR = 0.2`), `memory.low` is emitted with a ratio of process memory to total memory.
+
+```python CORE/main.py
+if usage.memory_is_low(Application.MEMORY_LOW_FACTOR):
+    _EV.emit(
+        'memory.low',
+        Time.current_ticks,
+        usage.Proc.flag_mem_p / usage.Proc.flag_mem
+    )
+```
+
+Similarly, if disk usage crosses the low threshold (`DISK_LOW_FACTOR = 0.1`), `disk.low` is emitted.
+
+| Event                    | Fires when                                              | Arguments                     |
+| ------------------------ | ------------------------------------------------------- | ----------------------------- |
+| `memory.system.change`   | Total available system memory changes                   | `ticks`                       |
+| `memory.process.change`  | The process's own memory footprint changes              | `ticks`                       |
+| `memory.low`             | Available system memory < 20% of total                  | `ticks`, `process/total ratio`|
+| `disk.system.change`     | Total system disk usage changes                         | `ticks`                       |
+| `disk.process.change`    | The process's disk usage changes                        | `ticks`                       |
+| `disk.low`               | Disk usage crosses the low threshold                    | `ticks`, `process/total ratio`|
+
+```python app.py
+import PycePlus as pp
+
+pp.window.new("App", width=800, height=600)
+pp.events.register_event(
+    "memory.low",
+    lambda t, ratio: print(f"[{t:.1f}s] memory low — process using {ratio:.0%} of system memory")
+)
+
+pp.mainloop(FPS=60)
+```
+
+## Network monitoring
+
+`handle_net()` also runs once per second. It checks whether a network interface is reachable and compares that result against `Application.is_online`.
+
+```python CORE/main.py
+def handle_net():
+    if NET.is_connected() and Application.is_online == False:
+        Application.is_online = True
+        Application.connection_lost = False
+        _EV.emit('network.reconnect', Time.current_ticks)
+    elif NET.is_connected() == False and Application.is_online == True:
+        Application.is_online = False
+        Application.connection_lost = True
+        _EV.emit('network.disconnect', Time.current_ticks)
+    elif NET.is_connected() and Application.is_online == False and Application.connection_lost == False:
+        _EV.emit('network.connect', Time.current_ticks)
+```
+
+| Event                | Fires when                                                        |
+| -------------------- | ----------------------------------------------------------------- |
+| `network.connect`    | Network becomes available for the first time (never been online)  |
+| `network.disconnect` | Network is lost while the app was online                          |
+| `network.reconnect`  | Network returns after a previous disconnect                       |
+
+```python app.py
+import PycePlus as pp
+
+pp.window.new("App", width=800, height=600)
+pp.events.register_event("network.connect",    lambda t: print("online"))
+pp.events.register_event("network.disconnect", lambda t: print("offline"))
+pp.events.register_event("network.reconnect",  lambda t: print("reconnected"))
+
+pp.mainloop(FPS=60)
+```
+
+## `Application.FPS` and `Application.REFRESH`
+
+`mainloop()` stores your requested frame rate in `Application.FPS`. You can read it at any time during the loop:
+
+```python
+from PycePlus.UI import Application
+
+print(Application.FPS)   # 60
+```
+
+`Application.REFRESH` is a boolean dirty flag. It starts as `True` so the first frame always renders. After each render it is reset to `False`. Any widget that changes its visual state should call `self.update()`, which sets `Application.REFRESH = True` to request the next redraw.
+
+```python app.py
+import PycePlus as pp
+from PycePlus.UI import Application
+
+pp.window.new("App", width=800, height=600)
+frame = pp.Frame(width=200, height=200, background_color=(60, 60, 200), x=50, y=50)
+
+def on_click():
+    frame.background_color.update((200, 60, 60))
+    frame.update()   # sets Application.REFRESH = True
+
+frame.bind("mouse.button.left.click", on_click)
+
+pp.mainloop(FPS=60)
+```
+
+<Warning>
+  If you modify widget properties without calling `widget.update()`, `Application.REFRESH` stays `False` and the change will not appear on screen until something else triggers a redraw.
+</Warning>

@@ -1,0 +1,198 @@
+---
+title: "Colors"
+description: "Creating and manipulating colors with the Color utility class"
+---
+
+`Color` extends `pygame.Color` with convenience constructors, in-place transforms, interpolation, and luminance checks. It accepts RGB tuples, hex strings, CSS names, or special keywords.
+
+## Creating a color
+
+```python
+from PycePlus.UI.tools.color import Color
+
+red   = Color(255, 0, 0)
+semi  = Color(255, 0, 0, 128)   # with alpha
+```
+
+### `Color.makefrom(c)`
+
+The static factory method accepts any of the supported input types and returns a `Color`:
+
+```python
+Color.makefrom((255, 0, 0))           # 3-tuple
+Color.makefrom((255, 0, 0, 200))      # 4-tuple with alpha
+Color.makefrom("#ff0000")             # hex string
+Color.makefrom("red")                 # CSS color name
+Color.makefrom("random")             # random opaque color
+Color.makefrom("transparent")        # (0, 0, 0, 0)
+Color.makefrom(existing_color)        # returns the same Color object
+```
+
+CSS names come from [matplotlib's CSS4 color list](https://matplotlib.org/stable/gallery/color/named_colors.html).
+
+## Updating in place
+
+`color.update(value)` applies a new value without creating a new object. It accepts the same input types as `makefrom()`:
+
+```python
+bg = Color(0, 0, 0)
+bg.update("cornflowerblue")
+bg.update((30, 30, 30))
+bg.update("random")
+```
+
+## Transforms
+
+All transforms listed here operate **in place** and return `None` unless noted.
+
+### `invert()`
+
+Flips each RGB channel: `255 - channel`. Alpha is unchanged.
+
+```python
+c = Color(200, 100, 50)
+c.invert()
+# c is now Color(55, 155, 205)
+```
+
+### `grayscale()`
+
+Returns a **new** `Color` where R, G, and B are replaced by `(R + G + B) // 3`. Alpha is preserved.
+
+```python
+gray = Color(200, 100, 50).grayscale()
+# gray is Color(116, 116, 116, 255)
+```
+
+### `adjust_brightness(factor, new=False)`
+
+Multiplies each RGB channel by `factor`, clamped to `[0, 255]`.
+
+- `new=False` (default) — modifies the color in place, returns `None`.
+- `new=True` — returns a new `Color`, leaving the original unchanged.
+
+```python
+c = Color(100, 100, 100)
+c.adjust_brightness(1.5)          # in place: Color(150, 150, 150)
+
+darker = c.adjust_brightness(0.5, new=True)   # new object
+```
+
+### `lerp(target, t=0.5, new=False)`
+
+Linearly interpolates between the color and `target`. `t=0.0` returns the original color; `t=1.0` returns the target; `t=0.5` returns the midpoint.
+
+`target` can be any type accepted by `makefrom()`.
+
+```python
+start  = Color(0, 0, 255)
+end    = Color(255, 0, 0)
+
+mid    = start.lerp(end, t=0.5, new=True)   # Color(127, 0, 127, 255)
+start.lerp(end, t=0.25)                      # modifies start in place
+```
+
+## Conversions
+
+| Method | Returns | Example output |
+|---|---|---|
+| `to_hex()` | `str` | `"#ff0000ff"` |
+| `to_tuple()` | `tuple[int, int, int, int]` | `(255, 0, 0, 255)` |
+| `tuple_RGB()` | `tuple[int, int, int]` | `(255, 0, 0)` |
+
+```python
+c = Color(255, 128, 0)
+
+print(c.to_hex())      # "#ff8000ff"
+print(c.to_tuple())    # (255, 128, 0, 255)
+print(c.tuple_RGB())   # (255, 128, 0)
+```
+
+## Luminance and comparison
+
+### `is_light()` / `is_dark()`
+
+Uses the standard luminance formula `0.2126R + 0.7152G + 0.0722B`. Returns `True` if luminance exceeds 128.
+
+```python
+Color(255, 255, 255).is_light()   # True
+Color(0, 0, 0).is_dark()          # True
+Color(200, 200, 0).is_light()     # True  (yellows read as light)
+```
+
+Useful for choosing foreground text color automatically:
+
+```python
+def text_color(bg: Color) -> Color:
+    return Color.makefrom("black") if bg.is_light() else Color.makefrom("white")
+```
+
+### `is_nearby(color, tolerance=10)`
+
+Returns `True` if all three RGB channels are within `tolerance` of the given color.
+
+```python
+a = Color(100, 100, 100)
+b = Color(105, 98, 102)
+
+a.is_nearby(b, tolerance=10)   # True
+a.is_nearby(b, tolerance=3)    # False
+```
+
+### `tonality()`
+
+Returns `(R + G + B) // 3` as an integer. Useful for a quick brightness estimate.
+
+```python
+Color(200, 100, 50).tonality()   # 116
+```
+
+## `colorType` alias
+
+Throughout PycePlus, widget properties that accept colors use the `colorType` type alias:
+
+```python
+colorType = Color | tuple[int, int, int, int] | tuple[int, int, int] | str
+```
+
+You can pass any of these forms directly to widget properties — `Color.makefrom()` is called internally to normalise the value.
+
+## `random_color(count, alpha=255)`
+
+Generates a list of random RGBA tuples:
+
+```python
+from PycePlus.UI.tools.color import random_color
+
+colors = random_color(5)           # list of 5 random opaque tuples
+colors = random_color(3, alpha=128)  # semi-transparent
+```
+
+## Lerp animation example
+
+Smoothly transition a background between two colors over time using `CALL_PER_SECOND`:
+
+```python
+import PycePlus as pp
+from PycePlus.UI.tools.color import Color
+
+pp.window.new("Lerp demo", width=600, height=400, background_color=(0, 0, 0))
+
+start  = Color(0, 0, 255)
+end    = Color(255, 80, 0)
+t      = 0.0
+
+def tick():
+    global t
+    t = min(t + 0.05, 1.0)
+    current = start.lerp(end, t=t, new=True)
+    # Update the window background by reopening with the new color
+    from PycePlus.UI.window import Window
+    Window.reopen(background_color=current.tuple_RGB())
+
+pp.mainloop(FPS=60, CALL_PER_SECOND=tick)
+```
+
+<Tip>
+  Prefer `new=True` when you need to keep the original color intact — for example, when you store a base color and repeatedly lerp from it to different targets.
+</Tip>

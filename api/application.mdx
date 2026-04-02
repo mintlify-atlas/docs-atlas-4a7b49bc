@@ -1,0 +1,89 @@
+---
+title: "Application"
+description: "Reference for the Application class that holds global app state"
+---
+
+`Application` is a class-level singleton that holds global state for a running PycePlus application. All attributes are class variables — there is no instance; access them directly on the class.
+
+## Import
+
+```python
+from PycePlus.UI import Application
+```
+
+## Attributes
+
+<ResponseField name="state" type="str">
+  Current application activity state. Managed automatically by the main loop.
+
+  | Value | Meaning |
+  |-------|---------|
+  | `"busy"` | Input events are being processed this frame. |
+  | `"idle"` | No input events for the current frame; `system.idle` has been emitted. |
+  | `"suspended"` | No input for 10+ consecutive seconds; `system.suspend` has been emitted. |
+</ResponseField>
+
+<ResponseField name="files" type="list[dict]">
+  File watcher events collected during the current frame. Each entry is a dict produced by the watcher describing a filesystem change (created, modified, deleted, etc.). Reset each frame by `mainloop()`.
+</ResponseField>
+
+<ResponseField name="MEMORY_LOW_FACTOR" type="float" default="0.2">
+  Threshold for the `memory.low` event. The event fires when **available** system memory falls below this fraction of total memory. Default `0.2` means the event fires when less than 20% of system memory is available.
+</ResponseField>
+
+<ResponseField name="DISK_LOW_FACTOR" type="float" default="0.1">
+  Threshold for the `disk.low` event. The event fires when free disk space falls below this fraction of total disk capacity. Default `0.1` means the event fires when less than 10% of disk space is free.
+</ResponseField>
+
+<ResponseField name="is_online" type="bool">
+  `True` if the host machine currently has network connectivity. Updated once per second by the main loop. Starts as `False` until the first connectivity check completes.
+</ResponseField>
+
+<ResponseField name="connection_lost" type="bool">
+  `True` if connectivity was lost at any point during the current session. Reset to `False` only when a reconnection is detected. Useful for showing a "reconnected" indicator.
+</ResponseField>
+
+<ResponseField name="FPS" type="int" default="60">
+  Target frame rate, set by `mainloop(FPS=...)` at startup. Read this value anywhere in your application to stay in sync with the configured tick rate.
+</ResponseField>
+
+<ResponseField name="REFRESH" type="bool" default="True">
+  When `True`, the main loop will clear the window and call `render.update()` on the next frame, then flip the display and reset this flag to `False`. Set it to `True` whenever your UI state changes and requires a redraw.
+</ResponseField>
+
+## `exit()`
+
+```python
+from PycePlus.UI import exit
+```
+
+Cleanly shuts down the application by calling `pygame.quit()` followed by `sys.exit()`. This is the recommended way to terminate a PycePlus app from user code.
+
+<Warning>
+  `exit()` calls `sys.exit()`, which raises `SystemExit`. Do not call it inside a `try/except Exception` block that would swallow the exception.
+</Warning>
+
+## Example
+
+```python
+from PycePlus.UI import Application, exit
+from PycePlus import __events__ as ev
+import pygame
+
+# Force a redraw when something changes
+def on_data_updated():
+    Application.REFRESH = True
+
+# Adjust the memory threshold
+Application.MEMORY_LOW_FACTOR = 0.15
+
+# Register a low-memory handler
+def handle_memory_low(ticks, ratio):
+    print(f"Memory pressure at {ratio:.1%} — freeing caches")
+
+ev.register_event("memory.low", handle_memory_low)
+
+# Exit cleanly on a custom hotkey
+from PycePlus.CORE import events
+events.register_key(pygame.K_q, on_press=exit)
+```

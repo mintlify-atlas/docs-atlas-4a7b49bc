@@ -1,0 +1,326 @@
+---
+title: "window"
+description: "Reference for window creation and the Window class"
+---
+
+The `window` module handles pygame display initialization and exposes a `Window` class for interacting with the active surface.
+
+## Import
+
+```python
+from PycePlus.UI import window
+```
+
+## Constants
+
+### `CENTER`
+
+```python
+CENTER = -1
+```
+
+Sentinel value for the `x` and `y` parameters of `window.new()` and `Window.reopen()`. When passed, the window position defaults to the value returned by pygame on creation (typically centered on the display).
+
+---
+
+## `window.new()`
+
+Creates the pygame display surface, applies flags, sets the window title and position, and returns a `Window` instance.
+
+```python
+win = window.new(
+    title="My App",
+    width=1280,
+    height=720,
+)
+```
+
+### Parameters
+
+<ParamField path="title" type="str" required>
+  Title shown in the window title bar.
+</ParamField>
+
+<ParamField path="width" type="int" default="screen_width - 200">
+  Width of the window in pixels.
+</ParamField>
+
+<ParamField path="height" type="int" default="screen_height - 200">
+  Height of the window in pixels.
+</ParamField>
+
+<ParamField path="x" type="int" default="CENTER">
+  Horizontal position of the window on the screen. Pass `window.CENTER` (or `-1`) to use the default position returned by pygame.
+</ParamField>
+
+<ParamField path="y" type="int" default="CENTER">
+  Vertical position of the window on the screen. Pass `window.CENTER` (or `-1`) to use the default position returned by pygame.
+</ParamField>
+
+<ParamField path="fulls_screen" type="bool" default="False">
+  Opens the window in fullscreen mode (`pygame.FULLSCREEN`).
+</ParamField>
+
+<ParamField path="resizable" type="bool" default="False">
+  Allows the user to resize the window (`pygame.RESIZABLE`).
+</ParamField>
+
+<ParamField path="noframe" type="bool" default="False">
+  Removes the window title bar and border (`pygame.NOFRAME`).
+</ParamField>
+
+<ParamField path="doublebuffer" type="bool" default="False">
+  Enables double buffering (`pygame.DOUBLEBUF`).
+</ParamField>
+
+<ParamField path="icon" type="pygame.Surface | str | None" default="None">
+  Window icon. Accepts a `pygame.Surface` or a file path string. Not yet implemented — passing a value has no effect.
+</ParamField>
+
+<ParamField path="background_color" type="tuple[int, int, int]" default="(0, 0, 0)">
+  RGB color used by `Window.clear()` to fill the surface each frame.
+</ParamField>
+
+<ParamField path="vsync" type="bool" default="False">
+  Enables vertical sync. Passed directly to `pygame.display.set_mode()`.
+</ParamField>
+
+<ParamField path="display" type="int" default="0">
+  Index of the display to open the window on in a multi-monitor setup.
+</ParamField>
+
+<ParamField path="depth" type="int" default="32">
+  Color depth in bits per pixel passed to `pygame.display.set_mode()`.
+</ParamField>
+
+### Returns
+
+A `Window` instance backed by the newly created `pygame.Surface`.
+
+---
+
+## `Window`
+
+All methods are static. `Window` wraps the module-level `_WINDOW` surface created by `window.new()`.
+
+### `Window.blit()`
+
+```python
+Window.blit(surface, pos=(0, 0))
+```
+
+Draws `surface` onto the window surface at `pos`.
+
+<ParamField path="surface" type="pygame.Surface" required>
+  Surface to draw.
+</ParamField>
+
+<ParamField path="pos" type="tuple[int, int]" default="(0, 0)">
+  `(x, y)` destination coordinates.
+</ParamField>
+
+---
+
+### `Window.clear()`
+
+```python
+Window.clear()
+```
+
+Fills the window surface with the `background_color` set in `window.new()`. Call this at the start of each frame before drawing widgets.
+
+---
+
+### `Window.blits()`
+
+```python
+Window.blits(sequence)
+```
+
+Draws multiple surfaces in a single call using `pygame.Surface.blits()`.
+
+<ParamField path="sequence" type="list[tuple[pygame.Surface, tuple[int, int]]]" required>
+  A list of `(surface, position)` pairs.
+</ParamField>
+
+---
+
+### `Window.title()`
+
+```python
+Window.title(title=None) -> str
+```
+
+Gets or sets the window title.
+
+<ParamField path="title" type="str | None" default="None">
+  New title to set. If `None`, the current title is returned without modification.
+</ParamField>
+
+Returns the current window title string.
+
+---
+
+### `Window.set_icon()`
+
+```python
+Window.set_icon(icon)
+```
+
+<Warning>
+  Not yet implemented. This method currently does nothing.
+</Warning>
+
+<ParamField path="icon" type="str | pygame.Surface" required>
+  Icon to apply to the window.
+</ParamField>
+
+---
+
+### `Window.screensize()`
+
+```python
+Window.screensize() -> tuple[int, int]
+```
+
+Returns `(width, height)` of the physical display, captured at import time via `pygame.display.Info()`.
+
+---
+
+### `Window.window_size()`
+
+```python
+Window.window_size() -> tuple[int, int]
+```
+
+Returns the current `(width, height)` of the pygame window surface.
+
+---
+
+### `Window.position()`
+
+```python
+Window.position(x=None, y=None)
+```
+
+Moves the window to the given coordinates. Omit a parameter to keep that axis unchanged.
+
+<ParamField path="x" type="int | None" default="None">
+  New horizontal position. If `None`, the current x position is preserved.
+</ParamField>
+
+<ParamField path="y" type="int | None" default="None">
+  New vertical position. If `None`, the current y position is preserved.
+</ParamField>
+
+---
+
+### `Window.get_position()`
+
+```python
+Window.get_position() -> tuple[int, int]
+```
+
+Returns the current `(x, y)` position of the window on the screen via `pygame.display.get_window_position()`.
+
+---
+
+### `Window.get_window()`
+
+```python
+Window.get_window() -> pygame.Surface
+```
+
+Returns the raw `pygame.Surface` for the window. Use this when you need direct pygame access.
+
+---
+
+### `Window.reopen()`
+
+```python
+Window.reopen(title=None, width=None, height=None, ...)
+```
+
+Recreates the display surface with updated settings. Any parameter that is `None` falls back to the value currently in use, so you only need to pass the parameters you want to change.
+
+Accepts the same parameters as `window.new()`, all optional.
+
+<ParamField path="title" type="str | None" default="None">
+  New window title. Defaults to the existing title.
+</ParamField>
+
+<ParamField path="width" type="int | None" default="None">
+  New width in pixels. Defaults to the existing width.
+</ParamField>
+
+<ParamField path="height" type="int | None" default="None">
+  New height in pixels. Defaults to the existing height.
+</ParamField>
+
+<ParamField path="x" type="int | None" default="None">
+  New horizontal position. Defaults to the current position.
+</ParamField>
+
+<ParamField path="y" type="int | None" default="None">
+  New vertical position. Defaults to the current position.
+</ParamField>
+
+<ParamField path="fulls_screen" type="bool | None" default="None">
+  Fullscreen flag. Defaults to the existing setting.
+</ParamField>
+
+<ParamField path="resizable" type="bool | None" default="None">
+  Resizable flag. Defaults to the existing setting.
+</ParamField>
+
+<ParamField path="noframe" type="bool | None" default="None">
+  No-frame flag. Defaults to the existing setting.
+</ParamField>
+
+<ParamField path="doublebuffer" type="bool | None" default="None">
+  Double-buffer flag. Defaults to the existing setting.
+</ParamField>
+
+<ParamField path="icon" type="pygame.Surface | str | None" default="None">
+  Window icon. Not yet implemented.
+</ParamField>
+
+<ParamField path="background_color" type="tuple[int, int, int] | None" default="None">
+  New background clear color. Defaults to the existing color.
+</ParamField>
+
+<ParamField path="vsync" type="bool | None" default="None">
+  Vsync flag. Defaults to the existing setting.
+</ParamField>
+
+<ParamField path="display" type="int | None" default="None">
+  Display index. Defaults to the existing setting.
+</ParamField>
+
+<ParamField path="depth" type="int | None" default="None">
+  Color depth. Defaults to the existing setting.
+</ParamField>
+
+---
+
+## Example
+
+```python
+import PycePlus as pp
+from PycePlus.UI.window import Window
+
+win = pp.window.new(
+    title="PycePlus Demo",
+    width=1280,
+    height=720,
+    background_color=(30, 30, 30),
+    resizable=True,
+)
+
+# Move and resize after initial creation
+Window.position(x=100, y=50)
+print(Window.window_size())    # (1280, 720)
+print(Window.screensize())     # monitor resolution
+
+pp.mainloop(FPS=60)
+```

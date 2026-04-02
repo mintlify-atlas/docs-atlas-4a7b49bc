@@ -1,0 +1,91 @@
+---
+title: "Introduction"
+description: "What PycePlus is, why it exists, and how it fits into your Pygame-CE project"
+---
+
+PycePlus is a Python extension for [Pygame-CE](https://pyga.me/) that gives you a structured foundation for building apps and games. It wraps Pygame-CE's raw surface and event APIs in a set of coherent layers — so your project starts with a working main loop, a widget tree, a thread-safe event bus, and resource monitoring, not a blank file.
+
+## The problem it solves
+
+Every Pygame-CE project needs the same scaffolding: a `while True` loop that polls events, caps FPS, clears the screen, draws widgets, and flips the display. Before you write a single line of game logic you've already wired mouse handlers, keyboard callbacks, a clock, and a quit guard. PycePlus collapses all of that into one call — `pp.mainloop()` — and adds capabilities that are hard to build correctly from scratch:
+
+- **Automatic state management** — the loop tracks whether the app is busy, idle, or suspended and emits the right lifecycle events.
+- **GUI widget tree** — widgets register themselves and are rendered every frame without manual bookkeeping.
+- **Thread-safe event bus** — 44 named system events fire from any thread without data races.
+- **Integrated networking** — online/offline detection and a resumable download client with progress events.
+- **Managed threading** — `asynchronous` utilities for running work off the main thread.
+- **File-system watcher** — MD5-based change detection that emits `file.created`, `file.modified`, and `file.deleted` events each loop tick.
+
+## Key capabilities
+
+<CardGroup cols={3}>
+  <Card title="Mainloop" icon="rotate">
+    `pp.mainloop(FPS=60)` caps frame rate, polls events, renders widgets, and runs per-second callbacks.
+  </Card>
+  <Card title="GUI" icon="window">
+    `Frame` containers hold widgets. Each widget exposes `bind()` for mouse events and `update()` to request a redraw.
+  </Card>
+  <Card title="Events" icon="bell">
+    44 named system events (`system.idle`, `network.disconnect`, `file.modified`, …) dispatched through a thread-safe bus.
+  </Card>
+  <Card title="Networking" icon="wifi">
+    Online/offline detection fires `network.connect` and `network.disconnect` automatically every second.
+  </Card>
+  <Card title="Threading" icon="microchip">
+    `asynchronous` helpers run tasks off the main thread and emit `thread.start`, `thread.end`, and `thread.error` events.
+  </Card>
+  <Card title="File watching" icon="eye">
+    Pass `REVIEW_PATHS` to `mainloop()` and get `file.created`, `file.modified`, and `file.deleted` events automatically.
+  </Card>
+</CardGroup>
+
+## Architecture overview
+
+PycePlus is organized in three layers that build on each other:
+
+```
+┌─────────────────────────────────┐
+│  GUI  — Frame, widgets, Tree    │  widget containers, per-widget mouse events,
+│         page navigation         │  page-scoped rendering
+├─────────────────────────────────┤
+│  CORE — mainloop, events,       │  main loop, input polling, system-state
+│         tools (net/async/watch) │  machine, file watching, resource monitoring
+├─────────────────────────────────┤
+│  UI   — Application, window     │  global state flags, Pygame window creation
+└─────────────────────────────────┘
+```
+
+**UI layer** (`PycePlus/UI/`) holds `Application` — a class of class-level flags (`state`, `REFRESH`, `FPS`, `is_online`) — and `window.py`, which wraps `pygame.display.set_mode`.
+
+**CORE layer** (`PycePlus/CORE/`) runs the loop (`main.py`), polls raw Pygame events (`events.py`), and provides tools for networking, async work, file watching, and time tracking.
+
+**GUI layer** (`PycePlus/GUI/`) provides `Base` (the widget base class with `bind()` / `update()`), `Frame` (a scrollable container), and `Tree` (the global widget registry organized by page).
+
+Your code imports everything through the top-level package:
+
+```python app.py
+import PycePlus as pp   # re-exports window, Frame, mainloop, events, Time, …
+```
+
+## Requirements
+
+- Python 3.10 or later (uses `X | Y` union types throughout the source)
+- `pygame-ce` — install with `pip install pygame-ce` (not `pygame`)
+
+<Note>
+  PycePlus does **not** work with the original `pygame` package. The project depends on `pygame-ce` APIs such as `pygame.display.get_window_position()` that are not present in `pygame`.
+</Note>
+
+## Hello world
+
+The smallest possible PycePlus app opens a window and runs the loop:
+
+```python hello.py
+import PycePlus as pp
+
+pp.window.new("Hello PycePlus", width=800, height=600, background_color=(20, 20, 30))
+
+pp.mainloop(FPS=60)
+```
+
+`window.new()` calls `pygame.display.set_mode` and stores the surface internally. `mainloop()` enters the `while True` loop, polls events, and renders the GUI tree every frame. Press the window's close button and `pygame.QUIT` is handled automatically — no extra code needed.

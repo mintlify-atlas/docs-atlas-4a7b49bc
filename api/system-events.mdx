@@ -1,0 +1,254 @@
+---
+title: "System events"
+description: "Reference for the 44 built-in PycePlus lifecycle events"
+---
+
+PycePlus includes 44 built-in lifecycle events covering system state, networking, file changes, resource usage, threads, and more. Use the functions below to register and manage handlers for these events.
+
+## Import
+
+```python
+from PycePlus import __events__ as ev
+```
+
+## Functions
+
+### `emit()`
+
+```python
+ev.emit(event: str | int, *args, **kwargs)
+```
+
+Fires an event, calling all registered handlers in registration order. You can pass positional and keyword arguments that will be forwarded to every handler.
+
+<ParamField path="event" type="str | int" required>
+  Event name string (e.g., `"system.start"`) or block ID integer.
+</ParamField>
+
+<ParamField path="*args" type="Any">
+  Positional arguments forwarded to each handler.
+</ParamField>
+
+<ParamField path="**kwargs" type="Any">
+  Keyword arguments forwarded to each handler.
+</ParamField>
+
+<Note>
+  If a handler raises an exception, `emit()` catches it and re-emits `system.error` with the exception as the argument — unless the failing event is `system.error` itself, which prevents infinite recursion.
+</Note>
+
+---
+
+### `register_event()`
+
+```python
+ev.register_event(event: str | int, on_event: Callable[..., None]) -> int
+```
+
+Registers a handler for the given event. Returns a handler ID that can be used with `unregister_by_index()`.
+
+<ParamField path="event" type="str | int" required>
+  Event name string or block ID integer.
+</ParamField>
+
+<ParamField path="on_event" type="Callable" required>
+  The function to call when the event fires. Must accept the arguments emitted by the event (see the event table below).
+</ParamField>
+
+**Returns**
+
+<ResponseField name="handler_id" type="int">
+  A globally unique integer ID for this registration. Store it if you need to unregister by index later.
+</ResponseField>
+
+---
+
+### `unregister_event()`
+
+```python
+ev.unregister_event(event: str | int, on_event: Callable[..., None])
+```
+
+Removes a handler by function reference. Only the first matching entry is removed.
+
+<ParamField path="event" type="str | int" required>
+  Event name string or block ID integer.
+</ParamField>
+
+<ParamField path="on_event" type="Callable" required>
+  The exact callable that was previously registered.
+</ParamField>
+
+---
+
+### `unregister_by_index()`
+
+```python
+ev.unregister_by_index(event: str | int, index: int)
+```
+
+Removes a handler by the ID returned from `register_event()`.
+
+<ParamField path="event" type="str | int" required>
+  Event name string or block ID integer.
+</ParamField>
+
+<ParamField path="index" type="int" required>
+  The handler ID returned by `register_event()`.
+</ParamField>
+
+---
+
+### `clear_block()`
+
+```python
+ev.clear_block(event: str | int)
+```
+
+Removes **all** registered handlers for the given event.
+
+<ParamField path="event" type="str | int" required>
+  Event name string or block ID integer.
+</ParamField>
+
+---
+
+## Thread safety
+
+Every event block has its own `threading.Lock`. The handler list is copied under the lock before iteration, so handlers may themselves call `register_event()` or `unregister_event()` without deadlocking.
+
+## Event reference
+
+### System (9 events)
+
+| Event | Description |
+|-------|-------------|
+| `system.start` | Application has started. |
+| `system.shutdown` | Application is shutting down. |
+| `system.suspend` | No input for 10+ seconds; application entered suspended state. |
+| `system.resume` | Input detected after `idle` or `suspended` state; application is active again. |
+| `system.error` | An unhandled exception occurred inside an event handler. Receives the exception as the first argument. |
+| `system.idle` | Input event count dropped to zero; application transitioned to idle. |
+| `system.gui.fatigue` | More than 15 input events were processed in a single frame. Receives `(ticks, event_count)`. |
+| `system.window.lost` | The application window lost OS focus. Receives `(ticks,)`. |
+| `system.window.gained` | The application window gained OS focus. Receives `(ticks,)`. |
+
+### Network (8 events)
+
+| Event | Description |
+|-------|-------------|
+| `network.error` | A network error occurred. |
+| `network.connect` | Network connectivity established for the first time this session. Receives `(ticks,)`. |
+| `network.disconnect` | Network connectivity lost. Receives `(ticks,)`. |
+| `network.receive` | Data was received over the network. |
+| `network.send` | Data was sent over the network. |
+| `network.failed` | A network operation failed. |
+| `network.connectionError` | A connection attempt encountered an error. |
+| `network.reconnect` | Connectivity restored after a previous disconnection. Receives `(ticks,)`. |
+
+### Network client (6 events)
+
+| Event | Description |
+|-------|-------------|
+| `network.client.start` | A client network operation has started. |
+| `network.client.progress` | Progress update for an ongoing client operation. |
+| `network.client.end` | A client network operation completed successfully. |
+| `network.client.paused` | A client operation was paused. |
+| `network.client.resume` | A paused client operation resumed. |
+| `network.client.canceled` | A client operation was canceled. |
+
+### Database (6 events)
+
+| Event | Description |
+|-------|-------------|
+| `database.error` | A database error occurred. |
+| `database.connect` | Database connection established. |
+| `database.disconnect` | Database connection closed. |
+| `database.receive` | Data was received from the database. |
+| `database.send` | Data was sent to the database. |
+| `database.failed` | A database operation failed. |
+
+### File (5 events)
+
+| Event | Description |
+|-------|-------------|
+| `file.opened` | A watched file was opened. |
+| `file.closed` | A watched file was closed. |
+| `file.modified` | A watched file was modified. |
+| `file.created` | A new file was created in a watched directory. |
+| `file.deleted` | A watched file was deleted. |
+
+### Memory (3 events)
+
+| Event | Description |
+|-------|-------------|
+| `memory.system.change` | Total system memory usage changed. Receives `(ticks, bytes_used)`. |
+| `memory.process.change` | Memory usage of this process changed. Receives `(ticks, bytes_used)`. |
+| `memory.low` | Process memory usage exceeded `Application.MEMORY_LOW_FACTOR`. Receives `(ticks, ratio)`. |
+
+### Disk (3 events)
+
+| Event | Description |
+|-------|-------------|
+| `disk.system.change` | Total system disk usage changed. Receives `(ticks, bytes_used)`. |
+| `disk.process.change` | Disk usage attributed to this process changed. Receives `(ticks, bytes_used)`. |
+| `disk.low` | Process disk usage exceeded `Application.DISK_LOW_FACTOR`. Receives `(ticks, ratio)`. |
+
+### Thread (4 events)
+
+| Event | Description |
+|-------|-------------|
+| `thread.create` | A managed thread was created. |
+| `thread.start` | A managed thread started executing. |
+| `thread.end` | A managed thread finished. |
+| `thread.error` | An error occurred inside a managed thread. |
+
+## Examples
+
+### Registering and unregistering a handler
+
+```python
+from PycePlus import __events__ as ev
+
+def on_connect(ticks):
+    print(f"Connected at {ticks:.2f}s")
+
+# Register and store the ID
+handler_id = ev.register_event("network.connect", on_connect)
+
+# Later — remove by ID
+ev.unregister_by_index("network.connect", handler_id)
+```
+
+### Temporary one-shot handler
+
+```python
+from PycePlus import __events__ as ev
+
+def on_start(ticks):
+    print("App started — running setup")
+    ev.unregister_event("system.start", on_start)
+
+ev.register_event("system.start", on_start)
+```
+
+### Handling errors in handlers
+
+```python
+from PycePlus import __events__ as ev
+
+def on_error(exc):
+    # Receives the original exception
+    print(f"Handler error: {exc}")
+
+ev.register_event("system.error", on_error)
+```
+
+### Clearing all handlers for an event
+
+```python
+from PycePlus import __events__ as ev
+
+# Remove every handler registered for disk.low
+ev.clear_block("disk.low")
+```

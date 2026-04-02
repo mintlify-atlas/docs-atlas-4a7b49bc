@@ -1,0 +1,334 @@
+---
+title: "Color"
+description: "Reference for the Color utility class"
+---
+
+`Color` extends `pygame.Color` with convenience constructors, in-place mutation helpers, and common color analysis methods.
+
+## Import
+
+```python
+from PycePlus.UI.tools.color import Color, colorType, random_color
+```
+
+---
+
+## `colorType`
+
+```python
+colorType = Color | tuple[int, int, int, int] | tuple[int, int, int] | str
+```
+
+Type alias accepted anywhere a color value is expected in PycePlus. Strings can be CSS color names, hex strings, `'random'`, or `'transparent'`.
+
+---
+
+## `Color`
+
+```python
+Color(r=0, g=0, b=0, a=255)
+```
+
+Extends `pygame.Color`. All four channels default to an opaque black when omitted.
+
+<ParamField path="r" type="int" default="0">
+  Red channel, `0`–`255`.
+</ParamField>
+
+<ParamField path="g" type="int" default="0">
+  Green channel, `0`–`255`.
+</ParamField>
+
+<ParamField path="b" type="int" default="0">
+  Blue channel, `0`–`255`.
+</ParamField>
+
+<ParamField path="a" type="int" default="255">
+  Alpha channel, `0`–`255`. `255` is fully opaque.
+</ParamField>
+
+```python
+red = Color(255, 0, 0)
+semi_transparent = Color(0, 128, 255, 128)
+```
+
+---
+
+### `Color.makefrom()`
+
+```python
+Color.makefrom(c) -> Color
+```
+
+Static factory method. Converts any `colorType` value into a `Color` instance. If `c` is already a `Color`, it is returned as-is.
+
+<ParamField path="c" type="colorType" required>
+  Color value to convert. Accepted formats:
+
+  | Format | Example |
+  |--------|---------|
+  | `tuple` of 3 ints | `(255, 128, 0)` |
+  | `tuple` of 4 ints | `(255, 128, 0, 200)` |
+  | Hex string | `'#ff8000'` |
+  | CSS color name | `'tomato'`, `'steelblue'` |
+  | `'random'` | Random opaque color |
+  | `'transparent'` | `(0, 0, 0, 0)` |
+  | `Color` instance | Returned unchanged |
+</ParamField>
+
+```python
+c1 = Color.makefrom((255, 0, 128))
+c2 = Color.makefrom('#1a2b3c')
+c3 = Color.makefrom('royalblue')
+c4 = Color.makefrom('random')
+c5 = Color.makefrom('transparent')
+```
+
+---
+
+## Instance methods
+
+### `update(color)`
+
+```python
+color.update(color)
+```
+
+Replaces the RGBA channels of this instance in place. Accepts the same types as `makefrom()`.
+
+<ParamField path="color" type="colorType" required>
+  New color value. Raises `ValueError` for unrecognised string values or unsupported types.
+</ParamField>
+
+```python
+c = Color(0, 0, 0)
+c.update((100, 150, 200))
+c.update('transparent')
+```
+
+---
+
+### `invert()`
+
+```python
+color.invert()
+```
+
+Inverts the RGB channels in place (`channel = 255 - channel`). Alpha is not modified.
+
+```python
+c = Color(255, 100, 50)
+c.invert()
+# c is now Color(0, 155, 205)
+```
+
+---
+
+### `grayscale()`
+
+```python
+color.grayscale() -> Color
+```
+
+Returns a new `Color` where all three channels are set to `(r + g + b) // 3`. Alpha is preserved from the original.
+
+```python
+gray = Color(200, 100, 50).grayscale()
+# gray ≈ Color(116, 116, 116, 255)
+```
+
+---
+
+### `to_hex()`
+
+```python
+color.to_hex() -> str
+```
+
+Returns the color as a lowercase hex string including alpha (e.g. `'#ff8000ff'`).
+
+```python
+Color(255, 128, 0).to_hex()   # '#ff8000ff'
+```
+
+---
+
+### `to_tuple()`
+
+```python
+color.to_tuple() -> tuple[int, int, int, int]
+```
+
+Returns `(r, g, b, a)` as a plain tuple.
+
+---
+
+### `tuple_RGB()`
+
+```python
+color.tuple_RGB() -> tuple[int, int, int]
+```
+
+Returns `(r, g, b)` without the alpha channel, suitable for pygame drawing functions that do not accept alpha.
+
+---
+
+### `adjust_brightness(factor, new=False)`
+
+```python
+color.adjust_brightness(factor, new=False) -> Color | None
+```
+
+Multiplies each RGB channel by `factor` and clamps the result to `0`–`255`.
+
+<ParamField path="factor" type="float" required>
+  Multiplier. Values below `1.0` darken; values above `1.0` brighten.
+</ParamField>
+
+<ParamField path="new" type="bool" default="False">
+  When `True`, returns a new `Color` without modifying the original. When `False`, modifies in place and returns `None`.
+</ParamField>
+
+```python
+dark = Color(200, 150, 100).adjust_brightness(0.5, new=True)
+# dark ≈ Color(100, 75, 50, 255)
+
+c = Color(100, 100, 100)
+c.adjust_brightness(1.5)   # in-place → Color(150, 150, 150)
+```
+
+---
+
+### `lerp(target, t=0.5, new=False)`
+
+```python
+color.lerp(target, t=0.5, new=False) -> Color | None
+```
+
+Linearly interpolates between this color and `target` across all four channels.
+
+<ParamField path="target" type="colorType" required>
+  Destination color. Accepts any `colorType` value.
+</ParamField>
+
+<ParamField path="t" type="float" default="0.5">
+  Interpolation factor. `0.0` returns the original color; `1.0` returns `target`.
+</ParamField>
+
+<ParamField path="new" type="bool" default="False">
+  When `True`, returns a new `Color` without modifying the original. When `False`, modifies in place and returns `None`.
+</ParamField>
+
+```python
+a = Color(0, 0, 0)
+b = Color(255, 255, 255)
+mid = a.lerp(b, t=0.5, new=True)
+# mid ≈ Color(127, 127, 127, 255)
+```
+
+---
+
+### `is_light()`
+
+```python
+color.is_light() -> bool
+```
+
+Returns `True` when the perceptual luminance (`0.2126·R + 0.7152·G + 0.0722·B`) exceeds `128`.
+
+---
+
+### `is_dark()`
+
+```python
+color.is_dark() -> bool
+```
+
+Returns `True` when `is_light()` is `False`.
+
+---
+
+### `is_nearby(color, tolerance=10)`
+
+```python
+color.is_nearby(color, tolerance=10) -> bool
+```
+
+Returns `True` when the absolute difference of each RGB channel between this color and `color` is less than `tolerance`.
+
+<ParamField path="color" type="colorType" required>
+  Color to compare against.
+</ParamField>
+
+<ParamField path="tolerance" type="int" default="10">
+  Maximum per-channel difference to still be considered "nearby".
+</ParamField>
+
+```python
+Color(100, 100, 100).is_nearby((105, 98, 102))   # True
+Color(100, 100, 100).is_nearby((200, 100, 100))   # False
+```
+
+---
+
+### `tonality()`
+
+```python
+color.tonality() -> int
+```
+
+Returns `(r + g + b) // 3` — the arithmetic average of the three channels. Equivalent to the gray value of `grayscale()`, without creating a new object.
+
+---
+
+## `random_color()`
+
+```python
+random_color(count, alpha=255) -> list[tuple[int, int, int, int]]
+```
+
+Module-level function. Generates a list of random RGBA color tuples.
+
+<ParamField path="count" type="int" required>
+  Number of colors to generate.
+</ParamField>
+
+<ParamField path="alpha" type="int" default="255">
+  Alpha value applied to every generated color.
+</ParamField>
+
+```python
+from PycePlus.UI.tools.color import random_color
+
+palette = random_color(5)
+# [(r1,g1,b1,255), (r2,g2,b2,255), ...]
+
+transparent_palette = random_color(3, alpha=128)
+```
+
+---
+
+## Example
+
+```python
+from PycePlus.UI.tools.color import Color, random_color
+
+bg = Color.makefrom('#1e1e2e')
+accent = Color.makefrom('steelblue')
+
+# Darken the accent for a hover state
+hover = accent.adjust_brightness(0.75, new=True)
+
+# Fade from accent to background over 10 steps
+steps = [
+    accent.lerp(bg, t=i / 10, new=True)
+    for i in range(11)
+]
+
+# Check legibility
+label_color = Color(255, 255, 255) if bg.is_dark() else Color(0, 0, 0)
+
+print(accent.to_hex())        # '#4682b4ff'
+print(accent.tonality())      # ≈ 97
+print(accent.is_nearby((70, 130, 180), tolerance=5))  # True
+```

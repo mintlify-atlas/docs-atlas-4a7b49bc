@@ -1,0 +1,106 @@
+---
+title: "Time"
+description: "Reference for the Time class for elapsed time and countdown timers"
+---
+
+`Time` is a class-level utility for tracking elapsed application time and managing named countdown timers. All members are class attributes or class methods — no instantiation required.
+
+## Import
+
+```python
+from PycePlus.CORE.timec import Time
+```
+
+## Attributes
+
+<ResponseField name="seconds" type="int">
+  Total number of complete seconds elapsed since the application started. Incremented once per second by the main loop.
+</ResponseField>
+
+<ResponseField name="current_ticks" type="float">
+  Current time in fractional seconds, sourced from `pygame.time.get_ticks() / 1000`. Updated every frame by `mainloop()`. Use this for sub-second precision.
+</ResponseField>
+
+<ResponseField name="keys" type="dict[str, int]">
+  Internal registry of named timer start times, keyed by the string passed to `Time.wait()`. You can inspect this dict but should not write to it directly.
+</ResponseField>
+
+## Methods
+
+### `Time.format()`
+
+```python
+Time.format() -> str
+```
+
+Returns the current elapsed time formatted as `"HH:MM:SS"` based on `Time.seconds`.
+
+```python
+print(Time.format())  # e.g. "00:04:37"
+```
+
+### `Time.wait()`
+
+```python
+Time.wait(key: str, seconds: int, reset: bool = False) -> bool
+```
+
+A named one-shot (or repeating) timer. On the **first call** with a given `key`, the current tick is stored and `False` is returned. On subsequent calls, returns `True` once `current_ticks - stored_ticks >= seconds`.
+
+<ParamField path="key" type="str" required>
+  Unique string identifier for this timer. Use a descriptive name to avoid collisions (e.g., `"ui.tooltip.delay"`, `"net.retry"`).
+</ParamField>
+
+<ParamField path="seconds" type="int" required>
+  Number of seconds to wait before returning `True`.
+</ParamField>
+
+<ParamField path="reset" type="bool" default="False">
+  When `True`, the timer is automatically re-registered the moment it fires, making it a **repeating interval**. When `False` (default), the timer fires once and continues returning `True` on every subsequent call until manually cleared from `Time.keys`.
+</ParamField>
+
+**Return value**
+
+<ResponseField name="fired" type="bool">
+  `False` while the timer has not yet elapsed. `True` on (and after) the frame the wait duration is reached.
+</ResponseField>
+
+## Examples
+
+### One-shot debounce
+
+```python
+from PycePlus.CORE.timec import Time
+
+def on_second():
+    # Show a tooltip 3 seconds after the app starts, once
+    if Time.wait("ui.tooltip.show", 3):
+        show_tooltip("Welcome to PycePlus!")
+```
+
+### Repeating interval
+
+```python
+from PycePlus.CORE.timec import Time
+
+def on_second():
+    # Autosave every 30 seconds
+    if Time.wait("autosave", 30, reset=True):
+        save_game_state()
+```
+
+### Reading elapsed time
+
+```python
+from PycePlus.CORE.timec import Time
+from PycePlus import __events__ as ev
+
+def on_start(ticks):
+    print(f"App started. Clock: {Time.format()}")
+
+ev.register_event("system.start", on_start)
+```
+
+<Note>
+  `Time.wait()` measures wall-clock seconds based on `current_ticks`. If the application is paused or the process is suspended by the OS, the elapsed time will reflect real time, not simulated time.
+</Note>

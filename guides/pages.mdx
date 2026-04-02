@@ -1,0 +1,233 @@
+---
+title: "Page navigation"
+description: "Using pages to build multi-screen applications without destroying widgets"
+---
+
+Pages let you divide your UI into named screens — `'menu'`, `'game'`, `'settings'` — and switch between them at runtime. Widgets are never destroyed when you change page; they are simply skipped by the render loop. This means you create all widgets once at startup and pay zero allocation cost during transitions.
+
+## How pages work
+
+Every widget stores the name of the page it was created on. At creation time, if you do not pass a `page` argument explicitly, the widget reads the current active page from `Tree.current_page()`:
+
+```python GUI/base.py
+self.page = page or Tree.current_page()
+```
+
+The render loop then filters by page membership:
+
+```python GUI/interface_man/render.py
+current_page = Tree.current_page()
+for widget in Tree.widgets:
+    if not widget.visible: continue
+    if widget.is_father_widget(): continue
+    if widget.page != current_page: continue  # skip widgets on other pages
+    ...
+```
+
+Only widgets whose `widget.page` matches the current page are composited onto the window each frame.
+
+## Tree API
+
+All page functions live in `GUI/interface_man/Tree.py` and are importable directly from `PycePlus.GUI.interface_man.Tree`.
+
+| Function                        | Description                                                                 |
+| ------------------------------- | --------------------------------------------------------------------------- |
+| `Tree.set_page(page)`           | Switch to a named page. Creates the page if it does not already exist.      |
+| `Tree.current_page()`           | Return the name of the currently active page.                               |
+| `Tree.page_exists(page)`        | Return `True` if the page has been created at least once.                   |
+| `Tree.next_page(page)`          | Advance to the next page in registration order, wrapping to the first.      |
+| `Tree.previous_page(page)`      | Go back to the previous page in registration order, wrapping to the last.   |
+| `Tree.get_pages()`              | Return the full list of registered page names in registration order.        |
+| `Tree.nav(root)`                | Find a widget by slash-separated path (e.g. `"panel/button"`).             |
+
+### `set_page` and `current_page`
+
+```python
+from PycePlus.GUI.interface_man import Tree
+
+Tree.set_page("game")          # switch to the 'game' page
+print(Tree.current_page())     # 'game'
+```
+
+`set_page` also registers the page the first time you call it. The default page is `'__main__'`, set at module load time.
+
+### `page_exists`
+
+```python
+if not Tree.page_exists("settings"):
+    print("settings page has not been created yet")
+```
+
+### `next_page` and `previous_page`
+
+<Warning>
+  `next_page` and `previous_page` cycle through **all** pages in the order they were first registered, regardless of how your app is structured. If you call `set_page` in an unexpected order during setup, the cycle order may not match your intended navigation flow. Use `set_page` directly when you need deterministic navigation.
+</Warning>
+
+```python
+from PycePlus.GUI.interface_man import Tree
+
+# cycle forward
+Tree.next_page(Tree.current_page())
+
+# cycle backward
+Tree.previous_page(Tree.current_page())
+```
+
+Both functions wrap around: calling `next_page` on the last registered page returns to the first, and `previous_page` on the first returns to the last.
+
+### `get_pages`
+
+```python
+pages = Tree.get_pages()
+print(pages)   # ['__main__', 'game', 'settings']
+```
+
+### `nav`
+
+`nav` lets you retrieve a widget by a slash-separated path through container widgets. The path is matched against widget `name` attributes.
+
+```python
+from PycePlus.GUI.interface_man import Tree
+
+# find a widget named "submit" inside a Frame named "form"
+button = Tree.nav("form/submit")
+```
+
+```python GUI/interface_man/Tree.py
+def nav(root: str):
+    parts = root.split('/')
+    first_part = parts[0]
+    parts = parts[1:]
+
+    def recursive_search(childrens, first_part, parts):
+        for child in childrens:
+            if child.name == first_part:
+                if parts and not child.is_container():
+                    raise Exception(f'{child.name} is not a container')
+                return recursive_search(child.get_childrens(), parts[0], parts[1:])
+        return None
+    ...
+```
+
+`nav` raises an exception if you try to traverse through a widget that is not a container. It returns `None` if no widget is found.
+
+## Setting up widgets per page
+
+The key rule: **call `Tree.set_page()` before creating widgets for that page**. Widgets created while a given page is active are automatically assigned to that page.
+
+```python app.py
+import PycePlus as pp
+from PycePlus.GUI.interface_man import Tree
+
+pp.window.new("App", width=800, height=600, background_color=(15, 15, 30))
+
+# --- '__main__' page (default) ---
+menu_bg = pp.Frame(width=800, height=600, background_color=(20, 20, 60), name="menu_bg")
+
+# --- 'game' page ---
+Tree.set_page("game")
+game_bg = pp.Frame(width=800, height=600, background_color=(5, 30, 5), name="game_bg")
+
+# --- 'settings' page ---
+Tree.set_page("settings")
+settings_bg = pp.Frame(width=800, height=600, background_color=(40, 20, 5), name="settings_bg")
+
+# return to the starting page before entering the loop
+Tree.set_page("__main__")
+
+pp.mainloop(FPS=60)
+```
+
+<Note>
+  The default page is `'__main__'`. Widgets created before any call to `set_page` belong to `'__main__'`. You do not need to call `set_page('__main__')` explicitly at the top of your file.
+</Note>
+
+## Three-page example: menu → game → settings
+
+The following example wires up three pages with navigation buttons on each screen.
+
+```python app.py
+import PycePlus as pp
+from PycePlus.GUI.interface_man import Tree
+
+pp.window.new("Three-Page Demo", width=800, height=600, background_color=(15, 15, 30))
+
+
+# ── Menu page ─────────────────────────────────────────────────────────────────
+
+# (current page is '__main__' by default)
+menu_bg    = pp.Frame(width=800, height=600, background_color=(20, 20, 60))
+play_btn   = pp.Frame(width=160, height=50,  background_color=(80, 40, 200), x=320, y=260, name="play_btn",     page="__main__")
+config_btn = pp.Frame(width=160, height=50,  background_color=(40, 80, 200), x=320, y=330, name="config_btn",   page="__main__")
+
+
+# ── Game page ──────────────────────────────────────────────────────────────────
+
+Tree.set_page("game")
+game_bg   = pp.Frame(width=800, height=600, background_color=(5, 30, 5))
+menu_btn  = pp.Frame(width=160, height=50,  background_color=(80, 200, 80), x=20, y=20, name="menu_btn", page="game")
+
+
+# ── Settings page ──────────────────────────────────────────────────────────────
+
+Tree.set_page("settings")
+settings_bg = pp.Frame(width=800, height=600, background_color=(40, 20, 5))
+back_btn    = pp.Frame(width=160, height=50,  background_color=(200, 120, 40), x=20, y=20, name="back_btn", page="settings")
+
+
+# ── Navigation callbacks ────────────────────────────────────────────────────────
+
+def go_game():
+    Tree.set_page("game")
+    game_bg.update()
+
+def go_settings():
+    Tree.set_page("settings")
+    settings_bg.update()
+
+def go_menu():
+    Tree.set_page("__main__")
+    menu_bg.update()
+
+
+play_btn.bind("mouse.button.left.click",   go_game)
+config_btn.bind("mouse.button.left.click", go_settings)
+menu_btn.bind("mouse.button.left.click",   go_menu)
+back_btn.bind("mouse.button.left.click",   go_menu)
+
+
+# ── Start on the menu ───────────────────────────────────────────────────────────
+
+Tree.set_page("__main__")
+pp.mainloop(FPS=60)
+```
+
+<Tip>
+  Call `widget.update()` after switching pages to force a redraw. Without it, `Application.REFRESH` stays `False` and the new page content will not appear until something else triggers a frame.
+</Tip>
+
+## Widgets and explicit page assignment
+
+You can assign a widget to any page at creation time by passing the `page` keyword, regardless of what `Tree.current_page()` returns at that moment:
+
+```python
+# created while 'settings' is active, but belongs to 'game'
+special = pp.Frame(width=100, height=100, background_color=(200, 0, 0), page="game")
+```
+
+This is useful for utility widgets that must live on a specific page without interrupting the setup flow.
+
+## Checking the page list at runtime
+
+```python
+from PycePlus.GUI.interface_man import Tree
+
+print(Tree.get_pages())
+# ['__main__', 'game', 'settings']
+
+print(Tree.page_exists("hud"))
+# False
+```
+
+`get_pages()` returns the list in the order pages were first registered. `page_exists()` is safe to call before any widgets have been created on a page — it simply returns `False`.

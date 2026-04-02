@@ -1,0 +1,141 @@
+---
+title: "Threading"
+description: "Running background tasks with the managed thread pool"
+---
+
+The `asynchronous` module provides `Threads`, a thin wrapper around Python's `threading.Thread` that emits lifecycle events and auto-cleans up on exit.
+
+## Creating and running threads
+
+`Threads.run()` is the quickest way to move work off the main loop:
+
+```python
+from PycePlus.CORE.tools.asynchronous import Threads
+
+def load_data():
+    # runs in background
+    import time
+    time.sleep(2)
+    print("done")
+
+Threads.run(load_data, name="loader", desc="loads data from disk")
+```
+
+`Threads.run(func, name=None, desc=None)` creates a `_Thread`, registers it, and starts it immediately. It returns the `_Thread` instance.
+
+If you want to create a thread without starting it right away, use `Threads.new()`:
+
+```python
+from PycePlus.CORE.tools.asynchronous import Threads
+
+t = Threads.new(load_data, name="loader")
+# ... do other setup ...
+t.start()
+```
+
+## `_Thread` methods
+
+| Method | Description |
+|---|---|
+| `start()` | Start the underlying `threading.Thread`; returns `self` |
+| `wait()` | Block until the thread finishes (`thread.join()`) |
+| `kill()` | Remove the thread from `Threads._registry` without joining |
+
+```python
+from PycePlus.CORE.tools.asynchronous import Threads
+
+def fetch():
+    import time
+    time.sleep(1)
+
+t = Threads.run(fetch, name="fetcher")
+t.wait()   # block until fetch() returns
+print("fetch complete")
+```
+
+<Note>
+  All threads are created as daemon threads. If the main program exits they are terminated automatically. `kill()` only removes the registry entry — it does not interrupt a running thread.
+</Note>
+
+## Thread lifecycle events
+
+Every thread emits four events as it moves through its lifecycle.
+
+| Event | When it fires | Arguments |
+|---|---|---|
+| `thread.create` | Thread is registered (before start) | `tick, id, name` |
+| `thread.start` | Thread function begins executing | `tick, id, name` |
+| `thread.end` | Thread function returns normally | `tick, id, name` |
+| `thread.error` | Thread function raises an exception | `tick, id, name, exception` |
+
+### Handling thread errors
+
+```python
+from PycePlus.CORE.tools.asynchronous import Threads
+from PycePlus import __events__ as events
+
+def on_thread_error(tick, id, name, exc):
+    print(f"[{tick:.1f}s] thread '{name}' (id={id}) failed: {exc}")
+
+events.register_event("thread.error", on_thread_error)
+
+def risky():
+    raise ValueError("something went wrong")
+
+Threads.run(risky, name="risky-task")
+```
+
+## Registry
+
+`Threads._registry` is a plain `dict[int, _Thread]` keyed by thread ID. It contains all threads that have been created but have not yet finished.
+
+```python
+from PycePlus.CORE.tools.asynchronous import Threads
+
+print(f"active threads: {len(Threads._registry)}")
+```
+
+Threads remove themselves from the registry when their function returns or raises, so the registry accurately reflects what is currently running.
+
+## Auto-cleanup on exit
+
+`atexit.register(Threads.shutdown_all)` is called at import time. When your process exits, `Threads.shutdown_all()` clears the registry. Because threads are daemon threads, Python will not wait for them past the main thread's exit.
+
+## Background data loading example
+
+<Steps>
+
+<Step title="Define your work function">
+```python
+def load_assets():
+    import time
+    time.sleep(3)      # simulates slow I/O
+    print("assets ready")
+```
+</Step>
+
+<Step title="Register a completion handler">
+```python
+from PycePlus import __events__ as events
+
+def on_done(tick, id, name):
+    if name == "asset-loader":
+        print(f"[{tick:.1f}s] loading finished")
+
+events.register_event("thread.end", on_done)
+```
+</Step>
+
+<Step title="Start the thread">
+```python
+from PycePlus.CORE.tools.asynchronous import Threads
+
+Threads.run(load_assets, name="asset-loader", desc="loads game assets from disk")
+```
+</Step>
+
+</Steps>
+
+<Tip>
+  Give threads descriptive `name` values. The name appears in `thread.create`, `thread.start`, `thread.end`, and `thread.error` events, making it easy to filter handlers by task.
+</Tip>

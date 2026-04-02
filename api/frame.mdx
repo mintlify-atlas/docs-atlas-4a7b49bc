@@ -1,0 +1,349 @@
+---
+title: "Frame"
+description: "Reference for the Frame container widget"
+---
+
+`Frame` is a rectangular container widget that manages child widgets, optional scrolling, and border rendering. It extends [`Base`](/api/base-widget).
+
+## Import
+
+```python
+from PycePlus.GUI.frame import Frame
+```
+
+---
+
+## `Frame`
+
+### Constructor
+
+```python
+frame = Frame(
+    father=win,
+    width=400,
+    height=300,
+    background_color=(20, 20, 20),
+)
+```
+
+<ParamField path="father" type="Window | Frame | None" default="None">
+  Parent container. Pass a `Window` instance or another `Frame`. If `None`, the widget is attached to the global `Window`.
+</ParamField>
+
+<ParamField path="width" type="int" default="200">
+  Width of the frame in pixels.
+</ParamField>
+
+<ParamField path="height" type="int" default="200">
+  Height of the frame in pixels.
+</ParamField>
+
+<ParamField path="background_color" type="colorType" default="(0, 0, 0)">
+  Fill color for the frame surface. Accepts any `colorType` value.
+</ParamField>
+
+<ParamField path="border_width" type="int" default="0">
+  Width of the border in pixels. `0` disables the border.
+</ParamField>
+
+<ParamField path="border_color" type="colorType" default="(0, 0, 0)">
+  Color of the border.
+</ParamField>
+
+<ParamField path="border_radius" type="int" default="0">
+  Uniform corner radius for all four corners.
+</ParamField>
+
+<ParamField path="border_top_left_radius" type="int" default="0">
+  Radius for the top-left corner. Overrides `border_radius` for this corner when non-zero.
+</ParamField>
+
+<ParamField path="border_top_right_radius" type="int" default="0">
+  Radius for the top-right corner.
+</ParamField>
+
+<ParamField path="border_bottom_right_radius" type="int" default="0">
+  Radius for the bottom-right corner.
+</ParamField>
+
+<ParamField path="border_bottom_left_radius" type="int" default="0">
+  Radius for the bottom-left corner.
+</ParamField>
+
+<ParamField path="border_sides" type="tuple[int, int, int, int]" default="(1, 1, 1, 1)">
+  Controls which sides of the border are drawn. The tuple is `(top, right, bottom, left)`. Use `0` to hide a side and `1` to show it.
+</ParamField>
+
+<ParamField path="border_type" type="'normal' | 'double' | 'gradient'" default="'normal'">
+  Visual style of the border.
+
+  | Value | Description |
+  |-------|-------------|
+  | `'normal'` | Single solid border. |
+  | `'double'` | Two parallel border lines. |
+  | `'gradient'` | Border rendered with a color gradient defined by `border_gradient_colors`. |
+</ParamField>
+
+<ParamField path="border_gradient_type" type="'horizontal' | 'vertical'" default="'horizontal'">
+  Direction of the gradient when `border_type='gradient'`.
+</ParamField>
+
+<ParamField path="border_gradient_colors" type="list[colorType]" default="[]">
+  List of colors used to build the border gradient. Requires `border_type='gradient'`.
+</ParamField>
+
+<ParamField path="padding_left" type="int" default="0">
+  Left inner padding in pixels.
+</ParamField>
+
+<ParamField path="padding_right" type="int" default="0">
+  Right inner padding in pixels.
+</ParamField>
+
+<ParamField path="padding_top" type="int" default="0">
+  Top inner padding in pixels.
+</ParamField>
+
+<ParamField path="padding_bottom" type="int" default="0">
+  Bottom inner padding in pixels.
+</ParamField>
+
+<ParamField path="scrollable" type="bool" default="False">
+  Enables scrolling for child widgets that overflow the frame bounds.
+</ParamField>
+
+<ParamField path="orientation" type="'auto' | 'vertical' | 'horizontal' | 'horizontal_and_vertical'" default="'auto'">
+  Scroll orientation when `scrollable=True`.
+
+  | Value | Description |
+  |-------|-------------|
+  | `'auto'` | Scroll direction determined automatically based on overflow. |
+  | `'vertical'` | Vertical scrolling only. |
+  | `'horizontal'` | Horizontal scrolling only. |
+  | `'horizontal_and_vertical'` | Both axes. |
+</ParamField>
+
+<ParamField path="x" type="int" default="0">
+  Horizontal position relative to the parent.
+</ParamField>
+
+<ParamField path="y" type="int" default="0">
+  Vertical position relative to the parent.
+</ParamField>
+
+<ParamField path="cursor" type="int | Cursors" default="'arrow'">
+  Mouse cursor shown when the pointer is over this frame. Accepts a `Cursors` string or its integer index.
+</ParamField>
+
+<ParamField path="name" type="str | None" default="None">
+  Optional identifier for the widget. Auto-generated as `Frame-<id>` if not provided.
+</ParamField>
+
+<ParamField path="page" type="str | None" default="None">
+  Page this widget belongs to. Used for multi-page UIs. Defaults to the current page from `Tree`.
+</ParamField>
+
+<ParamField path="visible" type="bool" default="True">
+  Whether the frame and its children are rendered.
+</ParamField>
+
+---
+
+### Methods
+
+#### `parent(widget)`
+
+```python
+frame.parent(widget)
+```
+
+Adds `widget` as a child of this frame. If the widget already belongs to another frame, it is unlinked first. Does nothing if the widget is already a child.
+
+---
+
+#### `unparent(widget)`
+
+```python
+frame.unparent(widget)
+```
+
+Removes `widget` from this frame's children list and re-attaches it to the global `Window`. Raises `Exception` if `widget` is not a child of this frame.
+
+---
+
+#### `is_children(widget)`
+
+```python
+frame.is_children(widget) -> bool
+```
+
+Returns `True` if `widget` is in the children list and its `father` is this frame.
+
+---
+
+#### `get_childrens()`
+
+```python
+frame.get_childrens() -> list[Base]
+```
+
+Returns the list of all child widgets currently parented to this frame.
+
+---
+
+#### `is_container()`
+
+```python
+frame.is_container() -> bool  # always True
+```
+
+Always returns `True`. This distinguishes `Frame` from leaf widgets that inherit `Base.is_container()` which returns `False`.
+
+---
+
+#### `render(renderable)`
+
+```python
+frame.render(renderable)
+```
+
+Fills the frame surface with `background_color`, blits each visible child whose `page` matches the frame's page, and appends those children to `renderable` for further processing by the render pipeline.
+
+<ParamField path="renderable" type="list[Base]" required>
+  Accumulator list. Visible children are appended here during the render pass.
+</ParamField>
+
+---
+
+## `Scroll`
+
+`Scroll` is a helper class that tracks and renders a scrollbar for a `Frame` with `scrollable=True`.
+
+### Constructor
+
+```python
+scroll = Scroll(
+    track_size=300,
+    scroll_gross=8,
+    orientation='vertical',
+    scroll_color=(150, 150, 150),
+    scroll_background_color=(40, 40, 40),
+)
+```
+
+<ParamField path="track_size" type="int" default="0">
+  Length of the scrollbar track in pixels (height for vertical, width for horizontal).
+</ParamField>
+
+<ParamField path="scroll_gross" type="int" default="0">
+  Thickness of the scroll thumb in pixels.
+</ParamField>
+
+<ParamField path="orientation" type="'horizontal' | 'vertical'" default="'horizontal'">
+  Orientation of the scrollbar.
+</ParamField>
+
+<ParamField path="scroll_color" type="colorType" default="(0, 0, 0)">
+  Color of the scroll thumb.
+</ParamField>
+
+<ParamField path="scroll_background_color" type="colorType" default="(255, 255, 255)">
+  Background color of the scrollbar track area.
+</ParamField>
+
+<ParamField path="scroll_radius" type="int" default="0">
+  Corner radius applied to the thumb and track rectangles.
+</ParamField>
+
+<ParamField path="track" type="bool" default="True">
+  Whether to render the track background behind the scroll thumb.
+</ParamField>
+
+<ParamField path="track_color" type="colorType | 'auto'" default="'auto'">
+  Color of the track background. Use `'auto'` to inherit from the parent frame.
+</ParamField>
+
+<ParamField path="track_padding" type="int" default="0">
+  Extra padding added around the track on the cross-axis.
+</ParamField>
+
+<ParamField path="track_border_color" type="colorType" default="(0, 0, 0)">
+  Color of the border drawn around the track.
+</ParamField>
+
+<ParamField path="track_border_width" type="int" default="0">
+  Width of the border drawn around the track. `0` disables the border.
+</ParamField>
+
+### Methods
+
+#### `set(x, y)`
+
+```python
+scroll.set(x=None, y=None)
+```
+
+Sets the scroll position. Omit an axis to leave it unchanged.
+
+<ParamField path="x" type="int | None" default="None">
+  New horizontal scroll offset in pixels.
+</ParamField>
+
+<ParamField path="y" type="int | None" default="None">
+  New vertical scroll offset in pixels.
+</ParamField>
+
+---
+
+#### `reset()`
+
+```python
+scroll.reset()
+```
+
+Resets both `x` and `y` scroll offsets to `0`, returning the scrollbar to the start position.
+
+---
+
+#### `end()`
+
+```python
+scroll.end()
+```
+
+Moves the scroll thumb to the end of the track (maximum scroll position) and sets `position` to `1.0`.
+
+---
+
+#### `render()`
+
+```python
+scroll.render() -> pygame.Surface
+```
+
+Draws the track and scroll thumb onto a new `pygame.Surface` and returns it. Blit the returned surface onto your frame at the appropriate offset.
+
+---
+
+## Example
+
+```python
+from PycePlus.UI import window
+from PycePlus.GUI.frame import Frame
+import pygame
+
+pygame.init()
+win = window.new("Demo", 800, 600)
+
+panel = Frame(
+    father=win,
+    width=300,
+    height=200,
+    background_color=(30, 30, 30),
+    border_width=1,
+    border_color=(80, 80, 80),
+    border_radius=6,
+    x=50,
+    y=50,
+)
+```

@@ -1,0 +1,151 @@
+---
+title: "File watching"
+description: "Monitoring directories for file changes, creations, and deletions"
+---
+
+PycePlus uses [watchdog](https://python-watchdog.readthedocs.io) under the hood to track filesystem changes. The watcher starts automatically when you call `mainloop()` and emits events for every file that is created, deleted, or modified inside the watched directories.
+
+## Starting the watcher via `mainloop()`
+
+The simplest setup is to let `mainloop()` manage the watcher for you:
+
+```python
+import PycePlus as pp
+
+pp.window.new("App", width=800, height=600)
+
+pp.mainloop(
+    FPS=60,
+    REVIEW_MAIN_DIR=True,         # watch the script's own directory
+    REVIEW_PATHS=["assets", "/home/user/config"],  # watch extra paths too
+)
+```
+
+`REVIEW_MAIN_DIR=True` (the default) is equivalent to passing `--main` to `watch.init()`. Set it to `False` to skip the script directory and only watch the paths in `REVIEW_PATHS`.
+
+## Starting the watcher manually
+
+If you need more control, call `watch.init()` directly:
+
+```python
+from PycePlus.CORE.tools import watch
+
+watcher = watch.init("--main", "assets", "/abs/path/to/config")
+```
+
+`watch.init(flag, *paths)`
+
+- `flag` — `"--main"` includes the script's directory; `"--nomain"` skips it.
+- `*paths` — additional directories to watch. Relative paths are resolved from the script's directory.
+
+Returns a `Watcher` instance.
+
+<Note>
+  `watch.init()` ignores paths that do not exist at startup and deduplicates overlapping paths automatically.
+</Note>
+
+## Polling for events
+
+Each frame, `mainloop()` calls `watcher.poll()` and stores the result in `Application.files`. You can read it directly if you prefer polling over event callbacks:
+
+```python
+from PycePlus.UI import Application
+
+def every_frame():
+    for event in Application.files:
+        print(event["type"], event["src"])
+```
+
+Calling `watcher.poll()` yourself clears the internal queue, so it is safe to call from a custom game loop too.
+
+## File events
+
+The watcher emits the following events via the PycePlus event bus.
+
+### `file.created`
+
+Fires when a new file or directory appears inside a watched path.
+
+```python
+{
+    "type":   "created",
+    "src":    "/abs/path/to/new_file.txt",
+    "is_dir": False,
+    "tick":   12.34,
+}
+```
+
+### `file.deleted`
+
+Fires when a file or directory is removed.
+
+```python
+{
+    "type":   "deleted",
+    "src":    "/abs/path/to/old_file.txt",
+    "is_dir": False,
+    "tick":   15.01,
+}
+```
+
+### `file.modified`
+
+Fires when a file's contents change. Only fires for files (not directories). Includes `size` and `hash` fields for change detection.
+
+```python
+{
+    "type":   "modified",
+    "src":    "/abs/path/to/config.json",
+    "is_dir": False,
+    "size":   4096,
+    "hash":   "d41d8cd98f00b204e9800998ecf8427e",  # MD5, or None for files > 5 MB
+    "tick":   18.77,
+}
+```
+
+<Note>
+  Files larger than 5 MB skip MD5 hashing for performance. Their `hash` field is `None`. The watcher still uses `size` and `mtime` to detect changes in those cases.
+</Note>
+
+### Duplicate suppression
+
+`file.modified` is suppressed if both `size` and `mtime` match the previous observation. For files under 5 MB, the MD5 hash provides a second check — if the content did not actually change the event is dropped.
+
+## Reacting to file events
+
+```python
+import PycePlus as pp
+from PycePlus import __events__ as events
+import json
+
+config = {}
+
+def reload_config(event):
+    if event["src"].endswith("config.json"):
+        with open(event["src"]) as f:
+            config.update(json.load(f))
+        print("config reloaded")
+
+events.register_event("file.modified", reload_config)
+
+pp.window.new("App", width=800, height=600)
+pp.mainloop(FPS=60, REVIEW_PATHS=["config"])
+```
+
+<Tip>
+  Register your event handlers before calling `mainloop()`. The watcher starts during `mainloop()` setup, and any changes that occur between startup and handler registration could be missed.
+</Tip>
+
+## Watching extra directories
+
+Pass paths relative to your script or as absolute paths:
+
+```python
+pp.mainloop(
+    FPS=60,
+    REVIEW_MAIN_DIR=False,                    # skip the script dir
+    REVIEW_PATHS=["assets/sounds", "themes"], # relative to script
+)
+```
+
+All paths are normalized to absolute paths internally. Non-existent paths are silently skipped at startup.

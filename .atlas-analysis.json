@@ -1,0 +1,125 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "PycePlus",
+  "projectDescription": "A Python extension for Pygame-CE that adds a structured application loop, GUI framework, event system, networking, threading, and file-watching utilities for building apps and games.",
+  "theme": "palm",
+  "primaryColor": "#7C3AED",
+  "lightColor": "#A78BFA",
+  "darkColor": "#4C1D95",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "concepts"
+            ]
+          },
+          {
+            "group": "Core Guides",
+            "pages": [
+              "guides/application-loop",
+              "guides/window",
+              "guides/pages"
+            ]
+          },
+          {
+            "group": "Events & Input",
+            "pages": [
+              "guides/event-system",
+              "guides/input-handling"
+            ]
+          },
+          {
+            "group": "Tools & Utilities",
+            "pages": [
+              "guides/networking",
+              "guides/threading",
+              "guides/file-watching",
+              "guides/time",
+              "guides/colors"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core",
+            "pages": [
+              "api/mainloop",
+              "api/application",
+              "api/time"
+            ]
+          },
+          {
+            "group": "Events",
+            "pages": [
+              "api/events",
+              "api/system-events"
+            ]
+          },
+          {
+            "group": "GUI",
+            "pages": [
+              "api/window",
+              "api/frame",
+              "api/base-widget"
+            ]
+          },
+          {
+            "group": "Tools",
+            "pages": [
+              "api/network",
+              "api/threads",
+              "api/color"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Structured application mainloop with FPS control and per-second callbacks",
+    "Hierarchical GUI framework with Frame containers and widget event binding",
+    "Rich event system with 44 built-in events (system, network, database, file, memory, thread)",
+    "Async file downloader with pause/resume/cancel control and progress events",
+    "Managed thread pool with lifecycle events (create, start, end, error)",
+    "File-system watcher with MD5 hash-based change detection",
+    "System resource monitoring (memory and disk usage with low-resource alerts)",
+    "Page-based UI navigation for multi-screen applications",
+    "Color utility class with lerp, grayscale, invert, and CSS/hex parsing",
+    "Network connectivity detection with automatic reconnect events"
+  ],
+  "publicApiSurface": [
+    "mainloop(FPS, CALL_PER_SECOND, REVIEW_PATHS, REVIEW_MAIN_DIR)",
+    "Application (state, FPS, REFRESH, MEMORY_LOW_FACTOR, DISK_LOW_FACTOR)",
+    "window.new(title, width, height, x, y, ...)",
+    "Window (blit, clear, blits, title, set_icon, screensize, window_size, position, reopen)",
+    "Frame(father, width, height, background_color, border_*, padding_*, scrollable, ...)",
+    "Base.bind(event, callback)",
+    "events.register_key(key, on_press, on_release, on_repeat)",
+    "events.register_button(button, on_press, on_release, on_repeat, double_click)",
+    "events.register_custom_event(event, on_event)",
+    "events.emit(event, *args, **kwargs)",
+    "events.register_event(event, on_event)",
+    "events.unregister_event(event, on_event)",
+    "Time.wait(key, seconds, reset)",
+    "Time.format()",
+    "asynchronous.Threads.new(func, name, desc)",
+    "asynchronous.Threads.run(func, name, desc)",
+    "network.download(url, output)",
+    "network.is_connected(timeout)",
+    "Color(r, g, b, a)",
+    "Color.makefrom(c)",
+    "Color.lerp(target, t, new)",
+    "Color.adjust_brightness(factor, new)",
+    "Tree.set_page(page)",
+    "Tree.nav(root)"
+  ]
+}

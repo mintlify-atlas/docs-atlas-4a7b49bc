@@ -1,0 +1,232 @@
+---
+title: "Event system"
+description: "Using the 44-event PycePlus bus for system, network, file, memory, thread, and database events"
+---
+
+The `__events__` module is PycePlus's application-wide message bus. It lets any part of your code listen for or emit named events — network drops, file changes, low memory, thread lifecycle, and more — without hard-wiring callbacks between modules. Every event slot is backed by a `threading.Lock`, so handlers can be registered and fired safely from background threads.
+
+## Two APIs
+
+The module exposes two complementary surfaces.
+
+### Emit and register
+
+```python
+from PycePlus import __events__ as events
+
+# Fire an event, forwarding any arguments to all registered handlers
+events.emit(event, *args, **kwargs)
+
+# Attach a handler and receive a numeric ID back
+handler_id = events.register_event(event, callback)
+```
+
+### Unregister
+
+```python
+# Remove by reference — finds and removes the first matching callable
+events.unregister_event(event, callback)
+
+# Remove by the ID returned from register_event
+events.unregister_by_index(event, handler_id)
+
+# Remove every handler for an event at once
+events.clear_block(event)
+```
+
+<Note>
+  `register_event` returns an integer ID that is globally unique across all events. Store it when you need to remove a specific subscription later without keeping a reference to the callback itself.
+</Note>
+
+## Thread safety
+
+Each event block owns a `threading.Lock`. The lock is acquired when reading the handler list before dispatch, and when writing during registration or removal:
+
+```python __events__.py
+with block['lock']:
+    calls = tuple(block['calls'].values())   # snapshot for dispatch
+
+with block['lock']:
+    block['calls'][cid] = on_event           # registration
+```
+
+Dispatch itself happens outside the lock so that calling `register_event` or `unregister_event` from a handler does not deadlock.
+
+## `system.error` and error propagation
+
+If a handler raises an exception, `emit` catches it and re-emits `system.error` with the exception as the argument — unless the event that failed *was* `system.error`, which would cause infinite recursion:
+
+```python __events__.py
+for fn in calls:
+    try:
+        fn(*args, **kwargs)
+    except Exception as e:
+        if eid != _NAME_TO_ID['system.error']:
+            emit('system.error', e)
+```
+
+Register a `system.error` handler to log or display exceptions from any event handler in your app.
+
+## Complete event reference
+
+The bus contains exactly 44 named events, indexed 0–43.
+
+<AccordionGroup>
+
+<Accordion title="System events (IDs 0–5, 24, 42–43)">
+
+| Event | ID | Fires when |
+|---|---|---|
+| `system.start` | 0 | Application starts up |
+| `system.shutdown` | 1 | Application is shutting down |
+| `system.suspend` | 2 | No user input for 10+ idle seconds |
+| `system.resume` | 3 | Activity resumes after idle or suspended state |
+| `system.error` | 4 | Any event handler raises an unhandled exception |
+| `system.idle` | 5 | No input events during the last second |
+| `system.gui.fatigue` | 24 | GUI fatigue threshold is reached |
+| `system.window.lost` | 42 | Window loses focus (`WINDOWFOCUSLOST`) |
+| `system.window.gained` | 43 | Window gains focus (`WINDOWFOCUSGAINED`) |
+
+</Accordion>
+
+<Accordion title="Network events (IDs 6–12, 35–41)">
+
+| Event | ID | Fires when |
+|---|---|---|
+| `network.error` | 6 | A network error occurs |
+| `network.connect` | 7 | Network becomes available for the first time |
+| `network.disconnect` | 8 | Network is lost while the app was online |
+| `network.receive` | 9 | Data is received |
+| `network.send` | 10 | Data is sent |
+| `network.failed` | 11 | A network operation fails |
+| `network.connectionError` | 12 | A connection error occurs |
+| `network.reconnect` | 41 | Network returns after a previous disconnect |
+| `network.client.start` | 35 | A download begins |
+| `network.client.progress` | 36 | Download progress updates |
+| `network.client.end` | 37 | Download completes |
+| `network.client.paused` | 38 | Download is paused |
+| `network.client.resume` | 39 | Paused download resumes |
+| `network.client.canceled` | 40 | Download is canceled |
+
+</Accordion>
+
+<Accordion title="Database events (IDs 13–18)">
+
+| Event | ID | Fires when |
+|---|---|---|
+| `database.error` | 13 | A database error occurs |
+| `database.connect` | 14 | Database connection is established |
+| `database.disconnect` | 15 | Database connection is closed |
+| `database.receive` | 16 | Data is received from the database |
+| `database.send` | 17 | Data is sent to the database |
+| `database.failed` | 18 | A database operation fails |
+
+</Accordion>
+
+<Accordion title="File events (IDs 19–23)">
+
+| Event | ID | Fires when |
+|---|---|---|
+| `file.opened` | 19 | A file is opened |
+| `file.closed` | 20 | A file is closed |
+| `file.modified` | 21 | A watched file is modified |
+| `file.created` | 22 | A file is created in a watched path |
+| `file.deleted` | 23 | A file is deleted from a watched path |
+
+<Tip>
+  `file.created`, `file.modified`, and `file.deleted` are emitted by the file watcher started by `mainloop()`. Pass paths to watch via the `REVIEW_PATHS` parameter.
+</Tip>
+
+</Accordion>
+
+<Accordion title="Memory and disk events (IDs 25–30)">
+
+| Event | ID | Fires when |
+|---|---|---|
+| `memory.system.change` | 25 | Available system memory changes |
+| `memory.process.change` | 26 | The process's memory footprint changes |
+| `memory.low` | 27 | Available system memory falls below 20% of total |
+| `disk.system.change` | 28 | System-wide disk usage changes |
+| `disk.process.change` | 29 | The process's disk usage changes |
+| `disk.low` | 30 | Disk usage crosses the low threshold |
+
+</Accordion>
+
+<Accordion title="Thread events (IDs 31–34)">
+
+| Event | ID | Fires when |
+|---|---|---|
+| `thread.create` | 31 | A thread is created |
+| `thread.start` | 32 | A thread starts executing |
+| `thread.end` | 33 | A thread finishes |
+| `thread.error` | 34 | A thread raises an unhandled exception |
+
+</Accordion>
+
+</AccordionGroup>
+
+## Basic usage
+
+### Register and emit
+
+```python app.py
+import PycePlus as pp
+from PycePlus import __events__ as events
+
+def on_start():
+    print("application started")
+
+events.register_event("system.start", on_start)
+events.emit("system.start")
+```
+
+### Unregister by ID
+
+```python app.py
+import PycePlus as pp
+from PycePlus import __events__ as events
+
+def temporary_handler():
+    print("fired once")
+
+handler_id = events.register_event("system.resume", temporary_handler)
+
+# Later — remove just this subscription
+events.unregister_by_index("system.resume", handler_id)
+```
+
+## Practical example
+
+The following registers handlers for network connectivity, memory warnings, and file changes all at once:
+
+```python app.py
+import PycePlus as pp
+from PycePlus import __events__ as events
+
+pp.window.new("Demo", width=800, height=600)
+
+# Network
+events.register_event("network.connect",    lambda t: print(f"[{t:.1f}s] online"))
+events.register_event("network.disconnect", lambda t: print(f"[{t:.1f}s] offline"))
+events.register_event("network.reconnect",  lambda t: print(f"[{t:.1f}s] reconnected"))
+
+# Memory warning — args: (ticks, process/total ratio)
+events.register_event(
+    "memory.low",
+    lambda t, ratio: print(f"[{t:.1f}s] memory low — process at {ratio:.0%}")
+)
+
+# File changes from the watcher
+events.register_event("file.created",  lambda t, path: print(f"created:  {path}"))
+events.register_event("file.modified", lambda t, path: print(f"modified: {path}"))
+events.register_event("file.deleted",  lambda t, path: print(f"deleted:  {path}"))
+
+# Catch errors from any handler
+events.register_event("system.error", lambda e: print(f"handler error: {e}"))
+
+pp.mainloop(FPS=60, REVIEW_MAIN_DIR=True)
+```
+
+<Note>
+  Register all handlers before calling `mainloop()`. Events such as `network.connect` and state transitions fire as soon as the loop starts processing, so any handlers you need from the beginning should be registered before the loop begins.
+</Note>

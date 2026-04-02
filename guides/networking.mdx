@@ -1,0 +1,145 @@
+---
+title: "Networking"
+description: "Checking connectivity and downloading files with pause, resume, and cancel support"
+---
+
+The `network` module provides two things: a connectivity check and a streaming download function that runs in a background thread and exposes full pause, resume, and cancel control.
+
+## Checking connectivity
+
+```python
+from PycePlus.CORE.tools.network import downloader as network
+
+if network.is_connected():
+    print("online")
+```
+
+`is_connected(timeout=2.0)` opens a TCP connection to `8.8.8.8:53`. It returns `True` on success and `False` on any `OSError`. The `timeout` parameter controls how long (in seconds) to wait before giving up.
+
+<Note>
+  `mainloop()` calls `is_connected()` once per second automatically and emits `network.connect`, `network.disconnect`, and `network.reconnect` events. You only need to call it directly for on-demand checks.
+</Note>
+
+## Downloading files
+
+`download(url, output=None)` starts the transfer in a background thread immediately and returns a `DControl` object you can use to manage the download.
+
+```python
+from PycePlus.CORE.tools.network import downloader as network
+
+# Download to a file
+ctrl = network.download("https://example.com/data.zip", output="data.zip")
+
+# Download to memory (output=None)
+ctrl = network.download("https://example.com/data.json")
+```
+
+When `output` is omitted the data accumulates in a `bytearray` in memory. When `output` is provided, the content is written to that path incrementally as it arrives.
+
+## `DControl` — managing a download
+
+`download()` returns a `DControl` instance immediately. The transfer runs concurrently on a thread managed by `Threads.run()`.
+
+| Method | Description |
+|---|---|
+| `pause()` | Suspend the transfer (manual pause) |
+| `resume()` | Resume after a manual pause |
+| `cancel()` | Abort the transfer permanently |
+| `wait()` | Block until the transfer finishes |
+| `get(wait=False)` | Return the completed `DData` object; pass `wait=True` to block first |
+
+```python
+import time
+from PycePlus.CORE.tools.network import downloader as network
+
+ctrl = network.download("https://example.com/large.bin", output="large.bin")
+
+# Cancel after 5 seconds if still running
+time.sleep(5)
+ctrl.cancel()
+```
+
+## `DData` — the completed result
+
+When a download finishes, a `DData` object is stored in `download_register[id]` and passed to the `network.client.end` event.
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `int` | Unique download ID |
+| `url` | `str` | Original URL |
+| `data` | `bytes \| None` | In-memory payload (only when `output=None`) |
+| `path` | `str \| None` | Absolute file path (only when `output` was provided) |
+| `time` | `float` | Total transfer time in seconds |
+| `size` | `int` | Downloaded byte count |
+
+```python
+from PycePlus.CORE.tools.network import downloader as network
+from PycePlus import __events__ as events
+
+def on_end(tick, ddata):
+    print(f"downloaded {ddata.size} bytes in {ddata.time:.2f}s")
+    if ddata.data:
+        print(ddata.data[:100])
+
+events.register_event("network.client.end", on_end)
+
+ctrl = network.download("https://example.com/data.json")
+ctrl.wait()
+```
+
+## Download events
+
+PycePlus emits the following events over the lifecycle of a download.
+
+| Event | When it fires | Key arguments |
+|---|---|---|
+| `network.client.start` | Transfer begins | `tick, id, url, total_size, dest` |
+| `network.client.progress` | Each chunk received | `tick, id, downloaded, elapsed, total_size, eta` |
+| `network.client.end` | Transfer completes | `tick, ddata` |
+| `network.client.paused` | Download is paused | `tick, id, reason` (`"manual"` or `"error"`) |
+| `network.client.resume` | Download resumes | `tick, id, reason` |
+| `network.client.canceled` | Download is canceled | `tick, id` |
+| `network.failed` | Non-connection or unexpected error | `tick, id, url, exception, ddata` |
+
+### Progress callback example
+
+```python
+from PycePlus import __events__ as events
+from PycePlus.CORE.tools.network import downloader as network
+
+def on_progress(tick, id, downloaded, elapsed, total_size, eta):
+    if total_size:
+        pct = downloaded / total_size * 100
+        print(f"[{id}] {pct:.1f}% — ETA {eta}")
+
+events.register_event("network.client.progress", on_progress)
+
+ctrl = network.download("https://example.com/large.bin", output="large.bin")
+ctrl.wait()
+result = ctrl.get()
+print(f"saved to {result.path}")
+```
+
+## Global helpers
+
+These functions operate on all active downloads at once.
+
+| Function | Description |
+|---|---|
+| `resume_for_errs()` | Resume all downloads that are paused due to a connection error |
+| `resume_alls()` | Resume all paused downloads (manual and error) |
+| `cancel_alls()` | Cancel every active download |
+| `paused_alls()` | Pause every active download |
+| `cancel_errs()` | Cancel only downloads that are paused due to an error |
+
+```python
+from PycePlus.CORE.tools.network import downloader as network
+from PycePlus import __events__ as events
+
+# Retry all failed downloads when connectivity is restored
+events.register_event("network.reconnect", lambda t: network.resume_for_errs())
+```
+
+<Tip>
+  Use `cancel_alls()` in a `system.shutdown` handler to cleanly abort any in-progress transfers before your application exits.
+</Tip>

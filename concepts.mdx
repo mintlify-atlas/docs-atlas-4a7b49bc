@@ -1,0 +1,320 @@
+---
+title: "Core concepts"
+description: "The key abstractions in PycePlus: application state, the widget tree, events, and pages"
+---
+
+PycePlus is built around four ideas that repeat everywhere in the codebase: a state machine that tracks what the app is doing, a tree that owns all widgets, a two-layer event system, and pages that group widgets into named screens.
+
+<AccordionGroup>
+
+<Accordion title="Application state machine" icon="circle-dot">
+
+`Application.state` is a string that is always one of `'busy'`, `'idle'`, or `'suspended'`. The main loop evaluates `handle_system_action_events()` once per second and transitions between states based on the event count (`events.Info.num`) accumulated during that second.
+
+```python CORE/main.py
+def handle_system_action_events():
+    state = Application.state
+
+    if state == 'busy':
+        if events.Info.num == 0:
+            _EV.emit('system.idle', Time.current_ticks)
+            Application.state = 'idle'
+    elif state == 'idle':
+        if events.Info.num > 0:
+            _EV.emit('system.resume', Time.current_ticks)
+            Application.state = 'busy'
+        elif Time.wait('system.idle.timewait', 10, reset=True):
+            _EV.emit('system.suspend', Time.current_ticks)
+            Application.state = 'suspended'
+    elif state == 'suspended':
+        if events.Info.num > 0:
+            _EV.emit('system.resume', Time.current_ticks)
+            Application.state = 'busy'
+```
+
+State transitions:
+
+| From          | Condition                                   | To            | Event emitted     |
+| ------------- | ------------------------------------------- | ------------- | ----------------- |
+| `busy`        | No events for one second                    | `idle`        | `system.idle`     |
+| `idle`        | At least one event arrives                  | `busy`        | `system.resume`   |
+| `idle`        | Still no events after 10 ticks              | `suspended`   | `system.suspend`  |
+| `suspended`   | At least one event arrives                  | `busy`        | `system.resume`   |
+
+`events.Info.num` is incremented by mouse movement, mouse button presses, key presses, and window focus changes, then reset to zero at the end of each loop iteration.
+
+<Note>
+  The app starts in `'busy'` state (`Application.state = 'busy'` in `UI/__init__.py`) and only transitions once the loop is running.
+</Note>
+
+You can react to state changes by registering against the named events:
+
+```python
+import PycePlus as pp
+
+pp.events.register_event("system.idle", lambda t: print(f"app went idle at {t:.2f}s"))
+pp.events.register_event("system.suspend", lambda t: print("suspended — pausing background work"))
+pp.events.register_event("system.resume", lambda t: print("activity resumed"))
+```
+
+</Accordion>
+
+<Accordion title="Widget tree" icon="sitemap">
+
+Every widget that exists in PycePlus is tracked by `Tree` — a module-level list in `GUI/interface_man/Tree.py`. Widgets register themselves during `__init__`: if a widget has no parent `Frame`, `Base.__init__` calls `Tree.put(self)` directly.
+
+```python GUI/interface_man/Tree.py
+widgets: list[Base] = []
+Page: str = '__main__'
+Pages: list[str] = []
+
+def put(widget: Base):
+    if widget.is_father_widget():
+        raise ValueError("Widget already has a father widget")
+    widgets.append(widget)
+```
+
+```python GUI/base.py
+class Base:
+    def __init__(self, father, name, page):
+        ...
+        if isinstance(self.father, Window):
+            Tree.put(self)   # root-level widget → global tree
+        else:
+            self.father.put(self)   # child widget → parent Frame
+```
+
+**Navigation** — you can reach any widget by path using `Tree.nav()`:
+
+```python
+# retrieve a widget named "submit" inside a Frame named "form"
+button = Tree.nav("form/submit")
+```
+
+The path is split on `/` and searched recursively through container children. Non-container widgets raise an exception if you try to navigate through them.
+
+**Rendering** — the render loop walks the tree each frame. A `Frame` renders its children onto its own surface, then the window composites all root-level widgets. Child visibility and page membership are checked before rendering:
+
+```python GUI/frame.py
+def render(self, renderable):
+    self.texture.fill(self.background_color)
+    for child in self.childrens:
+        if not child.visible: continue
+        if child.page != self.page: continue
+        self.texture.blit(child.texture, child.rect.topleft)
+        renderable.append(child)
+```
+
+</Accordion>
+
+<Accordion title="Event system" icon="bell">
+
+PycePlus has two distinct event layers that work together:
+
+**Layer 1 — Pygame input events** (`CORE/events.py`)
+
+`events.exam()` is called every loop tick. It calls `pygame.event.get()`, classifies each raw event, and invokes registered callbacks:
+
+```python CORE/events.py
+def exam():
+    current_events = pygame.event.get()
+    for event in current_events:
+        if event.type == pygame.QUIT:
+            exit()
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            b = event.button
+            if b in BUTTONS_EVENT_REGISTER:
+                BUTTONS_EVENT_REGISTER[b][4] = True
+                command = BUTTONS_EVENT_REGISTER[b][0]
+                if command:
+                    command()
+            Info.num += 1
+        ...
+```
+
+Register raw Pygame input handlers with the three functions re-exported from the top-level package:
+
+```python
+import PycePlus as pp
+import pygame
+
+# keyboard
+pp.register_key(pygame.K_SPACE, on_press=lambda: print("space down"))
+
+# mouse button (button 1 = left, 2 = middle, 3 = right)
+pp.register_button(1, on_press=lambda: print("left click"), double_click=lambda: print("double!"))
+
+# custom pygame event
+MY_EVENT = pygame.event.custom_type()
+pp.register_custom_event(MY_EVENT, on_event=lambda: print("custom event fired"))
+```
+
+**Layer 2 — System lifecycle events** (`__events__.py`)
+
+44 named events cover the full application lifecycle. They are dispatched by `_EV.emit()` and received via `_EV.register_event()`. Every block has its own `threading.Lock`, making dispatch and registration safe from any thread.
+
+```python __events__.py
+def emit(event, *args, **kwargs):
+    eid = _get_id(event)
+    block = BLOCKS[eid]
+    with block['lock']:
+        calls = tuple(block['calls'].values())
+    for fn in calls:
+        fn(*args, **kwargs)
+
+def register_event(event, on_event):
+    eid = _get_id(event)
+    block = BLOCKS[eid]
+    cid = next(_id_gen)
+    with block['lock']:
+        block['calls'][cid] = on_event
+    return cid
+```
+
+Complete list of named events:
+
+| Group      | Events                                                                                                    |
+| ---------- | --------------------------------------------------------------------------------------------------------- |
+| System     | `system.start`, `system.shutdown`, `system.suspend`, `system.resume`, `system.error`, `system.idle`      |
+| Window     | `system.window.lost`, `system.window.gained`                                                              |
+| GUI        | `system.gui.fatigue`                                                                                      |
+| Network    | `network.error`, `network.connect`, `network.disconnect`, `network.receive`, `network.send`, `network.failed`, `network.connectionError`, `network.reconnect` |
+| Net client | `network.client.start`, `network.client.progress`, `network.client.end`, `network.client.paused`, `network.client.resume`, `network.client.canceled` |
+| Database   | `database.error`, `database.connect`, `database.disconnect`, `database.receive`, `database.send`, `database.failed` |
+| File       | `file.opened`, `file.closed`, `file.modified`, `file.created`, `file.deleted`                            |
+| Memory     | `memory.system.change`, `memory.process.change`, `memory.low`                                            |
+| Disk       | `disk.system.change`, `disk.process.change`, `disk.low`                                                   |
+| Thread     | `thread.create`, `thread.start`, `thread.end`, `thread.error`                                            |
+
+Subscribe to any event by name:
+
+```python
+import PycePlus as pp
+
+pp.events.register_event("network.disconnect", lambda t: print(f"lost connection at {t}"))
+pp.events.register_event("memory.low", lambda t, ratio: print(f"memory at {ratio:.0%}"))
+pp.events.register_event("file.modified", lambda t, path: print(f"{path} changed"))
+```
+
+`unregister_event(event, callback)` removes a specific handler. `clear_block(event)` removes all handlers for an event.
+
+</Accordion>
+
+<Accordion title="Page navigation" icon="layer-group">
+
+Pages let you divide your UI into named screens (e.g. `'menu'`, `'game'`, `'settings'`) without creating or destroying widgets. Every widget records the page it was created on, and the render loop skips widgets whose page does not match the current page.
+
+```python GUI/interface_man/Tree.py
+Page: str = '__main__'
+
+def current_page() -> str:
+    return Page
+
+def set_page(page: str):
+    global Pages, Page
+    Page = page
+    if page not in Pages:
+        Pages.append(page)
+```
+
+Widgets pick up the active page at construction time:
+
+```python GUI/base.py
+self.page = page or Tree.current_page()
+```
+
+This means the page a widget belongs to is determined by whichever page was active when the widget was instantiated — or you can pass `page='my_page'` explicitly.
+
+**Basic page workflow:**
+
+```python
+import PycePlus as pp
+from PycePlus.GUI.interface_man import Tree
+
+pp.window.new("App", width=800, height=600)
+
+# create menu widgets on the default '__main__' page
+menu_frame = pp.Frame(width=800, height=600, background_color=(10, 10, 40))
+
+# switch to a 'game' page before creating game widgets
+Tree.set_page('game')
+game_frame = pp.Frame(width=800, height=600, background_color=(5, 20, 5))
+
+# navigate back to menu
+Tree.set_page('__main__')
+
+pp.mainloop(FPS=60)
+```
+
+Additional navigation helpers in `Tree.py`:
+
+| Function                   | Description                                                |
+| -------------------------- | ---------------------------------------------------------- |
+| `Tree.set_page(page)`      | Switch to a named page, creating it if it does not exist   |
+| `Tree.current_page()`      | Return the name of the active page                         |
+| `Tree.page_exists(page)`   | Check whether a page has been registered                   |
+| `Tree.next_page(page)`     | Advance to the next page in registration order             |
+| `Tree.previous_page(page)` | Go back to the previous page in registration order         |
+| `Tree.get_pages()`         | Return the full list of registered page names              |
+
+<Tip>
+  Create all widgets for every page at startup and use `Tree.set_page()` to switch between them. This avoids allocation overhead during gameplay or transitions.
+</Tip>
+
+</Accordion>
+
+<Accordion title="Render loop and the REFRESH flag" icon="display">
+
+PycePlus does not redraw the screen every frame unconditionally. Instead, it uses `Application.REFRESH` as a dirty flag. The window is only cleared and redrawn when something has actually changed.
+
+```python CORE/main.py
+while True:
+    events.exam()
+
+    # update logic
+    if Application.REFRESH:
+        window._WINDOW.fill(window._COLOR)
+        render.update()
+
+    # check widget-level events (hit-testing etc.)
+    render.exam()
+
+    if Application.REFRESH:
+        pygame.display.flip()
+        Application.REFRESH = False
+
+    CLOCK.tick(Application.FPS)
+```
+
+Any widget can signal that it needs to be redrawn by calling `self.update()`, which sets `Application.REFRESH = True`:
+
+```python GUI/base.py
+def update(self):
+    Application.REFRESH = True
+```
+
+This means input or state changes in your callbacks should call `widget.update()` to trigger a repaint. If no widget calls `update()` between frames the display is not touched — which saves GPU work when the app is idle.
+
+```python
+import PycePlus as pp
+
+pp.window.new("App", width=800, height=600)
+
+frame = pp.Frame(width=200, height=200, background_color=(60, 60, 200), x=50, y=50)
+
+def on_click():
+    frame.background_color.update((200, 60, 60))   # change colour
+    frame.update()                                  # request repaint
+
+frame.bind("mouse.button.left.click", on_click)
+
+pp.mainloop(FPS=60)
+```
+
+<Note>
+  `Application.REFRESH` starts as `True` (`UI/__init__.py`) so the first frame always renders even before any user input.
+</Note>
+
+</Accordion>
+
+</AccordionGroup>

@@ -1,0 +1,181 @@
+---
+title: "Threads"
+description: "Reference for the managed background thread pool"
+---
+
+The `Threads` class provides a simple managed thread pool. Each thread is wrapped in a `_Thread` object that emits lifecycle events and cleans itself up from the registry on completion.
+
+## Import
+
+```python
+from PycePlus.CORE.tools.asynchronous import Threads
+```
+
+---
+
+## `Threads`
+
+### `Threads.run()`
+
+```python
+Threads.run(func, name=None, desc=None) -> _Thread
+```
+
+Creates a `_Thread`, registers it, and starts it immediately. Equivalent to calling `Threads.new(func, name, desc).start()`.
+
+<ParamField path="func" type="Callable" required>
+  Zero-argument callable to execute in the background thread.
+</ParamField>
+
+<ParamField path="name" type="str | None" default="None">
+  Human-readable thread name. Defaults to `"thread-<id>"`.
+</ParamField>
+
+<ParamField path="desc" type="str | None" default="None">
+  Optional description for the thread. Defaults to an empty string.
+</ParamField>
+
+Returns the started `_Thread` instance.
+
+```python
+def fetch_data():
+    import time
+    time.sleep(1)
+    print("done")
+
+t = Threads.run(fetch_data, name="fetcher")
+```
+
+---
+
+### `Threads.new()`
+
+```python
+Threads.new(func, name=None, desc=None) -> _Thread
+```
+
+Creates a `_Thread` and registers it in the internal registry, but does **not** start it. Call `_Thread.start()` when you are ready to begin execution.
+
+<ParamField path="func" type="Callable" required>
+  Zero-argument callable to execute in the background thread.
+</ParamField>
+
+<ParamField path="name" type="str | None" default="None">
+  Human-readable thread name. Defaults to `"thread-<id>"`.
+</ParamField>
+
+<ParamField path="desc" type="str | None" default="None">
+  Optional description. Defaults to an empty string.
+</ParamField>
+
+Returns the unstarted `_Thread` instance. Emits `thread.create` at registration time.
+
+```python
+t = Threads.new(my_task, name="worker", desc="Processes the queue")
+# ... configure something ...
+t.start()
+```
+
+---
+
+### `Threads.shutdown_all()`
+
+```python
+Threads.shutdown_all()
+```
+
+Clears the internal registry. Registered automatically with `atexit` — called automatically when the Python interpreter exits. You can also call it manually for cleanup during testing.
+
+<Note>
+  This does not forcibly terminate running threads. Daemon threads (which all `_Thread` instances are) will be killed by the interpreter on exit regardless.
+</Note>
+
+---
+
+## `_Thread`
+
+Wrapper around a `threading.Thread` with lifecycle event emission.
+
+### Attributes
+
+<ResponseField name="id" type="int">
+  Auto-incrementing integer identifier, unique across all `_Thread` instances in the process lifetime.
+</ResponseField>
+
+<ResponseField name="name" type="str">
+  Human-readable name. Defaults to `"thread-<id>"`.
+</ResponseField>
+
+<ResponseField name="desc" type="str">
+  Optional description string. Defaults to `""`.
+</ResponseField>
+
+### Methods
+
+#### `start()`
+
+```python
+thread.start() -> self
+```
+
+Starts the underlying `threading.Thread`. Returns `self` for chaining. Emits `thread.start` immediately when the thread body begins executing.
+
+---
+
+#### `wait()`
+
+```python
+thread.wait()
+```
+
+Blocks the calling thread until this thread finishes via `thread.join()`.
+
+---
+
+#### `kill()`
+
+```python
+thread.kill()
+```
+
+Removes this thread from the registry. Does not stop an already-running thread — Python does not support forced thread termination. Use this to deregister a thread that you know has completed or that you want to abandon.
+
+---
+
+## Thread lifecycle events
+
+All events are emitted via `PycePlus.__events__`.
+
+| Event | Payload | When emitted |
+|-------|---------|--------------|
+| `thread.create` | `ticks, id, name` | When `Threads.new()` registers the thread. |
+| `thread.start` | `ticks, id, name` | When the thread body begins executing. |
+| `thread.end` | `ticks, id, name` | When `func` returns without raising. |
+| `thread.error` | `ticks, id, name, exception` | When `func` raises an unhandled exception. |
+
+<Note>
+  After `thread.end` or `thread.error`, the thread removes itself from the registry automatically.
+</Note>
+
+---
+
+## Example
+
+```python
+from PycePlus.CORE.tools.asynchronous import Threads
+from PycePlus import __events__ as ev
+
+def on_error(ticks, id, name, exc):
+    print(f"Thread '{name}' (id={id}) failed: {exc}")
+
+ev.register_event("thread.error", on_error)
+
+def load_assets():
+    import time
+    time.sleep(2)
+    # load images, sounds, etc.
+
+t = Threads.run(load_assets, name="asset-loader", desc="Loads startup assets")
+t.wait()
+print("Assets ready")
+```

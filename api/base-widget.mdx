@@ -1,0 +1,246 @@
+---
+title: "Base widget"
+description: "Reference for the Base class that all PycePlus widgets inherit from"
+---
+
+`Base` is the foundation class for every PycePlus widget. It manages position, appearance, event bindings, and the parent–child relationship with the widget tree.
+
+## Import
+
+```python
+from PycePlus.GUI.base import Base
+```
+
+You will not instantiate `Base` directly. Use concrete widget classes such as [`Frame`](/api/frame) that extend it.
+
+---
+
+## Constructor
+
+```python
+Base(father, name, page)
+```
+
+<ParamField path="father" type="Frame | Window | None" required>
+  Parent container. The widget registers itself with `Tree` if the father is `Window`, or calls `father.put(self)` otherwise.
+</ParamField>
+
+<ParamField path="name" type="str | None" required>
+  Human-readable identifier. If `None`, a name is auto-generated as `ClassName-<id>`.
+</ParamField>
+
+<ParamField path="page" type="str | None" required>
+  Page this widget belongs to. If `None`, defaults to `Tree.current_page()`.
+</ParamField>
+
+---
+
+## Attributes
+
+<ResponseField name="father" type="Frame | Window">
+  The parent widget or `Window`. Updated by `parent()` / `unlink()` operations.
+</ResponseField>
+
+<ResponseField name="name" type="str">
+  Widget identifier. Auto-generated as `ClassName-<id>` when not supplied.
+</ResponseField>
+
+<ResponseField name="page" type="str">
+  Page this widget is assigned to. Only rendered when the active page matches.
+</ResponseField>
+
+<ResponseField name="rect" type="pygame.Rect">
+  Bounding box holding the widget's position (`x`, `y`) and size (`width`, `height`). Relative to the parent.
+</ResponseField>
+
+<ResponseField name="padding" type="Padding">
+  Inner spacing object with `left`, `right`, `top`, and `bottom` integer attributes.
+</ResponseField>
+
+<ResponseField name="outline" type="Outline">
+  Border configuration object. Holds `width`, `color`, `border_radius`, per-corner radii, `sides`, and gradient settings.
+</ResponseField>
+
+<ResponseField name="texture" type="pygame.Surface">
+  The rendered surface for this widget. Updated by the render pipeline each frame.
+</ResponseField>
+
+<ResponseField name="background_color" type="Color">
+  Fill color of the widget surface.
+</ResponseField>
+
+<ResponseField name="visible" type="bool">
+  When `False`, the widget is skipped during rendering.
+</ResponseField>
+
+<ResponseField name="is_focus" type="bool">
+  `True` while the widget holds input focus.
+</ResponseField>
+
+<ResponseField name="is_hover" type="bool">
+  `True` while the mouse cursor is over the widget.
+</ResponseField>
+
+---
+
+## Position properties
+
+All position properties are read-only. **Relative** properties are offsets from the parent's origin. **Absolute** properties add the parent's absolute position, giving the coordinate in screen space.
+
+### Relative
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `x` | `int` | Left edge relative to parent. |
+| `y` | `int` | Top edge relative to parent. |
+| `right` | `int` | Right edge (`x + width`). |
+| `bottom` | `int` | Bottom edge (`y + height`). |
+| `center` | `tuple[int, int]` | Center point `(cx, cy)`. |
+| `centerx` | `int` | Horizontal center. |
+| `centery` | `int` | Vertical center. |
+
+### Absolute
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `abs_x` | `int` | Left edge in screen coordinates. |
+| `abs_y` | `int` | Top edge in screen coordinates. |
+| `abs_right` | `int` | Right edge in screen coordinates. |
+| `abs_bottom` | `int` | Bottom edge in screen coordinates. |
+| `abs_center` | `tuple[int, int]` | Center in screen coordinates. |
+| `abs_centerx` | `int` | Horizontal center in screen coordinates. |
+| `abs_centery` | `int` | Vertical center in screen coordinates. |
+
+---
+
+## Methods
+
+### `bind(event, callback)`
+
+```python
+widget.bind(event, callback) -> self
+```
+
+Attaches a callback to a widget event. Returns `self` for chaining.
+
+<ParamField path="event" type="wEvents | int" required>
+  The event to listen for. Pass a `wEvents` string (e.g. `'mouse.button.left.click'`) or its integer index (see the [wEvents table](#wevents) below).
+</ParamField>
+
+<ParamField path="callback" type="Callable | None" required>
+  Function to call when the event fires. Pass `None` to remove an existing binding.
+</ParamField>
+
+```python
+button.bind('mouse.button.left.click', lambda w, pos: print("clicked at", pos))
+# or unbind:
+button.bind('mouse.button.left.click', None)
+```
+
+---
+
+### `get_size()`
+
+```python
+widget.get_size() -> tuple[int, int]
+```
+
+Returns `(width, height)` from the widget's `rect`.
+
+---
+
+### `update()`
+
+```python
+widget.update()
+```
+
+Sets `Application.REFRESH = True`, signalling the main loop to redraw the screen on the next frame. Call this after any state change that affects appearance.
+
+---
+
+### `unlink()`
+
+```python
+widget.unlink()
+```
+
+Detaches the widget from its parent `Frame` by calling `father.unparent(self)` and reassigning `father` to `Window`. Has no effect if the parent is already `Window`.
+
+---
+
+### `is_father_widget()`
+
+```python
+widget.is_father_widget() -> bool
+```
+
+Returns `True` if `father` is an instance of `Base` (i.e. a widget, not the bare `Window`).
+
+---
+
+### `is_container()`
+
+```python
+widget.is_container() -> bool
+```
+
+Returns `False` for `Base`. `Frame` overrides this to return `True`.
+
+---
+
+## `wEvents`
+
+String identifiers for all bindable widget events.
+
+| String | Index | Trigger |
+|--------|-------|---------|
+| `mouse.button.left.click` | `0` | Left mouse button pressed down over widget. |
+| `mouse.button.left.release` | `1` | Left mouse button released over widget. |
+| `mouse.button.left.repeat` | `2` | Left mouse button held down over widget. |
+| `mouse.button.middle.click` | `3` | Middle mouse button pressed down. |
+| `mouse.button.middle.release` | `4` | Middle mouse button released. |
+| `mouse.button.middle.repeat` | `5` | Middle mouse button held. |
+| `mouse.button.right.click` | `6` | Right mouse button pressed down. |
+| `mouse.button.right.release` | `7` | Right mouse button released. |
+| `mouse.button.right.repeat` | `8` | Right mouse button held. |
+| `mouse.hover` | `9` | Mouse cursor enters the widget bounds. |
+| `mouse.leave` | `10` | Mouse cursor leaves the widget bounds. |
+| `mouse.hovering` | `11` | Mouse cursor is within the widget bounds (fired each frame). |
+
+---
+
+## `Cursors`
+
+String values accepted by the `cursor` parameter on widgets.
+
+| Value | Description |
+|-------|-------------|
+| `'arrow'` | Default arrow cursor. |
+| `'ibeam'` | Text insertion beam. |
+| `'wait'` | Spinning wait/busy indicator. |
+| `'crosshair'` | Precision crosshair. |
+| `'waitarrow'` | Arrow with small wait indicator. |
+| `'sizenwse'` | Resize diagonal (NW–SE). |
+| `'sizenesw'` | Resize diagonal (NE–SW). |
+| `'sizewe'` | Resize horizontal (W–E). |
+| `'sizens'` | Resize vertical (N–S). |
+| `'sizeall'` | Move / resize all directions. |
+| `'no'` | Prohibited / not allowed. |
+| `'hand'` | Pointing hand for links. |
+
+---
+
+## Example
+
+```python
+from PycePlus.GUI.frame import Frame
+
+frame = Frame(width=200, height=100, background_color=(40, 40, 40))
+
+frame.bind('mouse.hover', lambda w, pos: print("hovered"))
+frame.bind('mouse.button.left.click', lambda w, pos: print("clicked"))
+
+print(frame.abs_x, frame.abs_y)   # screen coordinates
+print(frame.is_container())        # True for Frame
+```

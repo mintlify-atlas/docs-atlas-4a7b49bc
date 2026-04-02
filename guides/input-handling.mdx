@@ -1,0 +1,281 @@
+---
+title: "Input handling"
+description: "Registering keyboard, mouse button, and custom event callbacks"
+---
+
+`CORE/events.py` is the PycePlus input layer. It sits inside `mainloop()`'s `exam()` call and translates raw Pygame events into typed callbacks for keyboard keys, mouse buttons, custom event integers, and per-widget mouse interactions. All registration happens before `mainloop()` starts.
+
+## Keyboard
+
+```python
+from PycePlus.CORE import events
+
+events.register_key(
+    key,                    # pygame key constant, e.g. pygame.K_SPACE
+    on_press=None,          # called once when key goes down
+    on_release=None,        # called once when key comes up
+    on_repeat=None,         # called every frame while key is held
+)
+```
+
+`key` is any `pygame.K_*` integer constant. All three callbacks are optional — pass only what you need.
+
+```python app.py
+import pygame
+import PycePlus as pp
+from PycePlus.CORE import events
+
+pp.window.new("Keys", width=800, height=600)
+
+events.register_key(
+    pygame.K_ESCAPE,
+    on_press=lambda: print("escape pressed"),
+    on_release=lambda: print("escape released"),
+)
+
+events.register_key(
+    pygame.K_w,
+    on_repeat=lambda: print("holding W"),
+)
+
+pp.mainloop(FPS=60)
+```
+
+### `events.keyboard_is_active`
+
+`True` on any frame where at least one key is currently held down. Updated at the start of each `exam()` call by sampling `pygame.key.get_pressed()`.
+
+## Mouse buttons
+
+```python
+events.register_button(
+    button,                 # 1=left, 2=middle, 3=right
+    on_press=None,          # called on button down
+    on_release=None,        # called on button up
+    on_repeat=None,         # called every frame while button is held
+    double_click=None,      # called on double-click
+)
+```
+
+<Note>
+  Double-click fires when the same button is pressed twice and the second press arrives within **0.6 seconds** of the first.
+</Note>
+
+```python app.py
+import PycePlus as pp
+from PycePlus.CORE import events
+
+pp.window.new("Buttons", width=800, height=600)
+
+events.register_button(
+    1,                                              # left button
+    on_press=lambda: print("left click"),
+    double_click=lambda: print("left double-click"),
+)
+
+events.register_button(
+    3,                                              # right button
+    on_press=lambda: print("right click"),
+)
+
+pp.mainloop(FPS=60)
+```
+
+### Mouse state variables
+
+These module-level variables are updated by `exam()` on every frame:
+
+| Variable | Type | Description |
+|---|---|---|
+| `events.X` | `int` | Current cursor X position (screen pixels) |
+| `events.Y` | `int` | Current cursor Y position (screen pixels) |
+| `events.MOVED_X` | `int` | Horizontal movement delta since last frame |
+| `events.MOVED_Y` | `int` | Vertical movement delta since last frame |
+| `events.SCROLL_X` | `int` | Horizontal scroll wheel delta |
+| `events.SCROLL_Y` | `int` | Vertical scroll wheel delta |
+| `events.mouse_moved` | `bool` | `True` if the cursor moved this frame |
+
+## Custom events
+
+Register a handler for any Pygame custom event integer:
+
+```python
+events.register_custom_event(event_type_int, on_event)
+```
+
+```python app.py
+import pygame
+import PycePlus as pp
+from PycePlus.CORE import events
+
+pp.window.new("Custom events", width=800, height=600)
+
+MY_EVENT = pygame.event.custom_type()
+
+events.register_custom_event(MY_EVENT, lambda: print("custom event fired"))
+
+# Post the event from anywhere:
+pygame.event.post(pygame.event.Event(MY_EVENT))
+
+pp.mainloop(FPS=60)
+```
+
+## Widget mouse events
+
+Every widget that inherits from `Base` exposes a `bind` method for mouse interactions. These are higher-level than global button registration — they only fire when the cursor is over the specific widget.
+
+```python
+widget.bind(event, callback)
+```
+
+`bind` accepts either a `wEvents` string or the integer index from `wEvents_Map`. It returns `self` so calls can be chained.
+
+### Callback signature
+
+All widget mouse callbacks receive the widget instance and the cursor position relative to the widget:
+
+```python
+def handler(widget, pos):
+    x, y = pos   # pixels relative to the widget's top-left corner
+```
+
+### Widget events (`wEvents`)
+
+<AccordionGroup>
+
+<Accordion title="Left button">
+
+| Event string | Index | Fires when |
+|---|---|---|
+| `mouse.button.left.click` | 0 | Left button pressed over the widget |
+| `mouse.button.left.release` | 1 | Left button released over the widget |
+| `mouse.button.left.repeat` | 2 | Left button held down over the widget (every frame) |
+
+</Accordion>
+
+<Accordion title="Middle button">
+
+| Event string | Index | Fires when |
+|---|---|---|
+| `mouse.button.middle.click` | 3 | Middle button pressed over the widget |
+| `mouse.button.middle.release` | 4 | Middle button released over the widget |
+| `mouse.button.middle.repeat` | 5 | Middle button held down over the widget (every frame) |
+
+</Accordion>
+
+<Accordion title="Right button">
+
+| Event string | Index | Fires when |
+|---|---|---|
+| `mouse.button.right.click` | 6 | Right button pressed over the widget |
+| `mouse.button.right.release` | 7 | Right button released over the widget |
+| `mouse.button.right.repeat` | 8 | Right button held down over the widget (every frame) |
+
+</Accordion>
+
+<Accordion title="Hover events">
+
+| Event string | Index | Fires when |
+|---|---|---|
+| `mouse.hover` | 9 | Cursor first enters the widget bounds |
+| `mouse.leave` | 10 | Cursor exits the widget bounds |
+| `mouse.hovering` | 11 | Cursor is over the widget (every frame) |
+
+</Accordion>
+
+</AccordionGroup>
+
+### Binding example
+
+```python app.py
+import PycePlus as pp
+
+pp.window.new("Widget events", width=800, height=600)
+
+btn = pp.Frame(width=160, height=50, background_color=(60, 80, 200), x=20, y=20)
+
+def on_click(widget, pos):
+    print(f"clicked at {pos} inside the widget")
+
+def on_hover(widget, pos):
+    widget.background_color.update((80, 100, 220))
+    widget.update()
+
+def on_leave(widget, pos):
+    widget.background_color.update((60, 80, 200))
+    widget.update()
+
+btn.bind("mouse.button.left.click", on_click)
+btn.bind("mouse.hover", on_hover)
+btn.bind("mouse.leave", on_leave)
+
+pp.mainloop(FPS=60)
+```
+
+<Tip>
+  `bind` returns the widget, so you can chain multiple calls: `btn.bind(...).bind(...).bind(...)`.
+</Tip>
+
+## Cursors
+
+Set `widget.cursor` to one of the 12 supported cursor strings to change the OS cursor when hovering over a widget:
+
+| Value | Cursor |
+|---|---|
+| `arrow` | Default pointer |
+| `ibeam` | Text insertion beam |
+| `wait` | Spinning wait cursor |
+| `crosshair` | Precision crosshair |
+| `waitarrow` | Arrow with busy spinner |
+| `sizenwse` | Diagonal resize (NW–SE) |
+| `sizenesw` | Diagonal resize (NE–SW) |
+| `sizewe` | Horizontal resize |
+| `sizens` | Vertical resize |
+| `sizeall` | Move (four-way arrow) |
+| `no` | Not allowed |
+| `hand` | Clickable pointer hand |
+
+```python app.py
+import PycePlus as pp
+
+pp.window.new("Cursors", width=800, height=600)
+
+link = pp.Frame(width=120, height=40, background_color=(40, 120, 200), x=20, y=20)
+link.cursor = 'hand'
+
+text_field = pp.Frame(width=200, height=36, background_color=(30, 30, 30), x=20, y=80)
+text_field.cursor = 'ibeam'
+
+pp.mainloop(FPS=60)
+```
+
+## Full example
+
+Keyboard shortcut, global mouse button handler, and widget click binding together:
+
+```python app.py
+import pygame
+import PycePlus as pp
+from PycePlus.CORE import events
+
+pp.window.new("Input demo", width=800, height=600, background_color=(20, 20, 30))
+
+# Global keyboard shortcut
+events.register_key(pygame.K_ESCAPE, on_press=lambda: print("quit shortcut pressed"))
+
+# Global right-click anywhere
+events.register_button(3, on_press=lambda: print(f"right-click at {events.X}, {events.Y}"))
+
+# Widget with hover highlight and click handler
+card = pp.Frame(width=200, height=100, background_color=(50, 50, 150), x=100, y=100)
+card.cursor = 'hand'
+
+def on_click(widget, pos):
+    print(f"card clicked — local pos {pos}")
+
+card.bind("mouse.button.left.click", on_click)
+card.bind("mouse.hover",   lambda w, p: (w.background_color.update((70, 70, 200)), w.update()))
+card.bind("mouse.leave",   lambda w, p: (w.background_color.update((50, 50, 150)), w.update()))
+
+pp.mainloop(FPS=60)
+```

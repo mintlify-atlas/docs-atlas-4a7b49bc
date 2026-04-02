@@ -1,0 +1,149 @@
+---
+title: "Input events"
+description: "Reference for registering keyboard, mouse, and custom input event handlers"
+---
+
+`PycePlus.CORE.events` provides functions to register handlers for keyboard keys, mouse buttons, and custom pygame events. Handlers are called automatically during `events.exam()`, which runs once per frame inside `mainloop()`.
+
+## Import
+
+```python
+from PycePlus.CORE import events
+import pygame
+```
+
+## Registration functions
+
+### `register_key()`
+
+```python
+events.register_key(
+    key: int,
+    on_press: Callable | None = None,
+    on_release: Callable | None = None,
+    on_repeat: Callable | None = None,
+)
+```
+
+Registers callbacks for a keyboard key identified by a pygame key constant (e.g., `pygame.K_SPACE`).
+
+<ParamField path="key" type="int" required>
+  A pygame key constant such as `pygame.K_LEFT`, `pygame.K_RETURN`, or `pygame.K_ESCAPE`. See the [pygame key constants reference](https://www.pygame.org/docs/ref/key.html).
+</ParamField>
+
+<ParamField path="on_press" type="Callable | None" default="None">
+  Called once on the frame the key transitions from up to down (`KEYDOWN` event).
+</ParamField>
+
+<ParamField path="on_release" type="Callable | None" default="None">
+  Called once on the frame the key transitions from down to up (`KEYUP` event).
+</ParamField>
+
+<ParamField path="on_repeat" type="Callable | None" default="None">
+  Called every frame while the key is held down. Use for continuous actions such as movement.
+</ParamField>
+
+### `register_button()`
+
+```python
+events.register_button(
+    button: int,
+    on_press: Callable | None = None,
+    on_release: Callable | None = None,
+    on_repeat: Callable | None = None,
+    double_click: Callable | None = None,
+)
+```
+
+Registers callbacks for a mouse button.
+
+<ParamField path="button" type="int" required>
+  Mouse button number. `1` = left, `2` = middle, `3` = right (pygame convention).
+</ParamField>
+
+<ParamField path="on_press" type="Callable | None" default="None">
+  Called once on `MOUSEBUTTONDOWN`, unless the event qualifies as a double-click (see below).
+</ParamField>
+
+<ParamField path="on_release" type="Callable | None" default="None">
+  Called once on `MOUSEBUTTONUP`.
+</ParamField>
+
+<ParamField path="on_repeat" type="Callable | None" default="None">
+  Called every frame while the button is held down.
+</ParamField>
+
+<ParamField path="double_click" type="Callable | None" default="None">
+  Called instead of `on_press` when two `MOUSEBUTTONDOWN` events for the same button occur within **0.6 seconds** of each other. The single-click `on_press` is suppressed for the second click.
+</ParamField>
+
+### `register_custom_event()`
+
+```python
+events.register_custom_event(event: int, on_event: Callable | None = None)
+```
+
+Registers a handler for a pygame custom event type integer.
+
+<ParamField path="event" type="int" required>
+  The integer event type, typically created with `pygame.event.custom_type()` or a constant above `pygame.USEREVENT`.
+</ParamField>
+
+<ParamField path="on_event" type="Callable | None" default="None">
+  Called each frame a matching event is found in the pygame event queue.
+</ParamField>
+
+## State variables (read-only)
+
+These module-level variables are updated every frame by `events.exam()`. Read them from your handlers or `CALL_PER_SECOND` callback.
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `X` | `int` | Current mouse cursor X position in window pixels. |
+| `Y` | `int` | Current mouse cursor Y position in window pixels. |
+| `MOVED_X` | `int` | Mouse X displacement since the last frame (`event.rel`). |
+| `MOVED_Y` | `int` | Mouse Y displacement since the last frame (`event.rel`). |
+| `SCROLL_X` | `int` | Horizontal scroll wheel delta this frame. |
+| `SCROLL_Y` | `int` | Vertical scroll wheel delta this frame. |
+| `keyboard_is_active` | `bool` | `True` if any key is currently held down. |
+| `keyboard_input` | `bool` | `True` if a `KEYDOWN` event occurred this frame. |
+| `mouse_moved` | `bool` | `True` if mouse motion was detected this frame. |
+| `window_is_focus` | `bool` | `True` if the application window currently has OS focus. |
+
+## Double-click detection
+
+When `register_button()` is called with a `double_click` handler, PycePlus tracks the timestamp of the most recent `MOUSEBUTTONDOWN` for that button. If the next press occurs within **0.6 seconds**, the `double_click` callback fires instead of `on_press`.
+
+## Example
+
+```python
+import pygame
+from PycePlus.CORE import events
+from PycePlus.UI import exit
+
+# Exit on Escape
+events.register_key(pygame.K_ESCAPE, on_press=exit)
+
+# Move a player while arrow key is held
+def move_left():
+    player.x -= 4
+
+events.register_key(pygame.K_LEFT, on_repeat=move_left)
+
+# Handle left-click and double-click
+def on_click():
+    print(f"Clicked at ({events.X}, {events.Y})")
+
+def on_double_click():
+    print("Double-click!")
+
+events.register_button(1, on_press=on_click, double_click=on_double_click)
+
+# Respond to a custom pygame event
+MY_EVENT = pygame.event.custom_type()
+
+def handle_my_event():
+    print("Custom event fired")
+
+events.register_custom_event(MY_EVENT, handle_my_event)
+```

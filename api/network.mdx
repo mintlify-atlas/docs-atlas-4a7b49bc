@@ -1,0 +1,276 @@
+---
+title: "network"
+description: "Reference for connectivity checking and file downloads"
+---
+
+The `network` module provides a connectivity check and a non-blocking HTTP downloader backed by a managed background thread.
+
+## Import
+
+```python
+from PycePlus.CORE.tools.network import downloader
+```
+
+---
+
+## `is_connected()`
+
+```python
+is_connected(timeout=2.0) -> bool
+```
+
+Attempts to open a TCP connection to `8.8.8.8:53` (Google's public DNS). Returns `True` if the connection succeeds within the timeout, `False` otherwise.
+
+<ParamField path="timeout" type="float" default="2.0">
+  Maximum seconds to wait for the connection before returning `False`.
+</ParamField>
+
+```python
+if downloader.is_connected():
+    ctrl = downloader.download("https://example.com/file.zip", "file.zip")
+else:
+    print("No network connection")
+```
+
+---
+
+## `download()`
+
+```python
+download(url, output=None) -> DControl
+```
+
+Starts a background HTTP GET download and returns a `DControl` handle immediately. The download runs in a daemon thread managed by `Threads`.
+
+<ParamField path="url" type="str" required>
+  Full URL of the resource to download.
+</ParamField>
+
+<ParamField path="output" type="str | None" default="None">
+  Destination file path. When `None`, the content is downloaded into memory and stored as `bytes` in `DData.data`. When a path is provided, the content is streamed directly to that file and `DData.data` is `None`.
+</ParamField>
+
+Returns a `DControl` instance. The download begins immediately in the background.
+
+```python
+# Download to memory
+ctrl = downloader.download("https://example.com/data.json")
+ctrl.wait()
+result = ctrl.get()
+print(result.data)   # bytes
+
+# Download to file
+ctrl = downloader.download("https://example.com/image.png", "image.png")
+```
+
+---
+
+## `DControl`
+
+Handle returned by `download()`. Use it to pause, resume, cancel, or retrieve the result.
+
+### Methods
+
+#### `pause()`
+
+```python
+ctrl.pause()
+```
+
+Pauses the download. The background thread stops consuming chunks and waits. Emits `network.client.paused` with reason `"manual"`.
+
+---
+
+#### `resume()`
+
+```python
+ctrl.resume()
+```
+
+Resumes a manually paused download. Emits `network.client.resume` with reason `"manual"`.
+
+---
+
+#### `cancel()`
+
+```python
+ctrl.cancel()
+```
+
+Cancels the download. Both the manual and error pause events are set so the thread unblocks and raises `RuntimeError("Download canceled")` internally. Emits `network.client.canceled`.
+
+---
+
+#### `wait()`
+
+```python
+ctrl.wait()
+```
+
+Blocks the calling thread until the download thread finishes (via `thread.join()`).
+
+---
+
+#### `get(wait=False)`
+
+```python
+ctrl.get(wait=False) -> DData | None
+```
+
+Retrieves the completed `DData` result from the download registry.
+
+<ParamField path="wait" type="bool" default="False">
+  When `True`, calls `wait()` first so the result is available before returning.
+</ParamField>
+
+Returns a `DData` instance if the download completed successfully, or `None` if it has not finished or was cancelled.
+
+```python
+result = ctrl.get(wait=True)
+if result:
+    print(f"Downloaded {result.size} bytes in {result.time:.2f}s")
+```
+
+---
+
+#### `pause_for_error()`
+
+```python
+ctrl.pause_for_error()
+```
+
+Internal method. Pauses the download due to an error condition (e.g. a `ConnectionError`). Emits `network.client.paused` with reason `"error"`. Normally called by the download task itself, not user code.
+
+---
+
+#### `resume_for_error()`
+
+```python
+ctrl.resume_for_error()
+```
+
+Internal method. Resumes a download stalled by an error. Emits `network.client.resume` with reason `"error"`. Use `resume_for_errs()` to apply this to all error-stalled downloads at once.
+
+---
+
+## `DData`
+
+Result object stored in the download registry after a successful download.
+
+<ResponseField name="id" type="int">
+  Unique integer identifier for this download, assigned at creation.
+</ResponseField>
+
+<ResponseField name="url" type="str">
+  The URL that was downloaded.
+</ResponseField>
+
+<ResponseField name="data" type="bytes | None">
+  Downloaded content as bytes when `output=None` was passed to `download()`. `None` when the content was written to a file.
+</ResponseField>
+
+<ResponseField name="path" type="str | None">
+  Absolute file path where the content was saved. `None` for in-memory downloads.
+</ResponseField>
+
+<ResponseField name="time" type="float">
+  Total elapsed download time in seconds.
+</ResponseField>
+
+<ResponseField name="size" type="int">
+  Total number of bytes downloaded.
+</ResponseField>
+
+---
+
+## Global helpers
+
+These functions operate on all active `DControl` instances in the internal registry.
+
+### `resume_for_errs()`
+
+```python
+downloader.resume_for_errs()
+```
+
+Calls `resume_for_error()` on every download currently paused due to an error. Does not affect cancelled downloads.
+
+---
+
+### `resume_alls()`
+
+```python
+downloader.resume_alls()
+```
+
+Calls `resume()` and `resume_for_error()` on all non-cancelled downloads, clearing both manual and error pauses.
+
+---
+
+### `cancel_alls()`
+
+```python
+downloader.cancel_alls()
+```
+
+Cancels all active downloads.
+
+---
+
+### `paused_alls()`
+
+```python
+downloader.paused_alls()
+```
+
+Manually pauses all non-cancelled downloads.
+
+---
+
+### `cancel_errs()`
+
+```python
+downloader.cancel_errs()
+```
+
+Cancels all downloads that are currently in an error-paused state.
+
+---
+
+## Events emitted
+
+The downloader emits the following events via `PycePlus.__events__`:
+
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `network.client.start` | `ticks, id, url, total_size, dest` | Download begins. |
+| `network.client.progress` | `ticks, id, downloaded, elapsed, total_size, eta` | Emitted for each chunk received. |
+| `network.client.end` | `ticks, DData` | Download completed successfully. |
+| `network.client.paused` | `ticks, id, reason` | Download paused (`"manual"` or `"error"`). |
+| `network.client.resume` | `ticks, id, reason` | Download resumed. |
+| `network.client.canceled` | `ticks, id` | Download was cancelled. |
+| `network.failed` | `ticks, id, url, error, DData` | Unexpected error during download. |
+
+---
+
+## Example
+
+```python
+from PycePlus.CORE.tools.network import downloader
+from PycePlus import __events__ as ev
+
+def on_progress(ticks, id, downloaded, elapsed, total, eta):
+    if total:
+        print(f"{downloaded / total:.0%}")
+
+ev.register_event("network.client.progress", on_progress)
+
+if downloader.is_connected():
+    ctrl = downloader.download(
+        "https://example.com/dataset.csv",
+        output="dataset.csv",
+    )
+    ctrl.wait()
+    result = ctrl.get()
+    print(f"Saved to {result.path} — {result.size} bytes")
+```

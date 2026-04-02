@@ -1,0 +1,141 @@
+---
+title: "Time utilities"
+description: "Tracking elapsed time and creating named countdown timers"
+---
+
+The `Time` class in `PycePlus.CORE.timec` gives you integer elapsed seconds, a high-resolution tick counter, a formatted clock string, and a named debounce timer — all updated automatically by `mainloop()`.
+
+## Properties
+
+### `Time.seconds`
+
+An integer that increments by 1 every wall-clock second while `mainloop()` is running.
+
+```python
+from PycePlus.CORE.timec import Time
+
+print(Time.seconds)   # e.g. 42
+```
+
+### `Time.current_ticks`
+
+A float updated every frame from `pygame.time.get_ticks() / 1000`. Use this for sub-second precision. All PycePlus events receive the current tick as their first argument.
+
+```python
+from PycePlus.CORE.timec import Time
+
+print(Time.current_ticks)   # e.g. 42.317
+```
+
+## `Time.format()`
+
+Returns the elapsed time as an `"HH:MM:SS"` string based on `Time.seconds`.
+
+```python
+from PycePlus.CORE.timec import Time
+
+label.text = Time.format()   # "00:00:42"
+```
+
+## `Time.wait(key, seconds, reset=False)`
+
+A named debounce timer. Returns `True` exactly once after `seconds` have elapsed, then returns `False` again until the timer resets.
+
+**How it works:**
+
+1. The first call with a new `key` stores `current_ticks` and returns `False`.
+2. On subsequent calls, it returns `True` only when `current_ticks - stored_tick >= seconds`.
+3. If `reset=True`, the stored tick is updated to `current_ticks` when the timer fires, so it will fire again after another `seconds` interval.
+
+```python
+Time.wait(key, seconds, reset=False) -> bool
+```
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `key` | `str` | — | Unique name for this timer |
+| `seconds` | `int` | — | Interval in seconds |
+| `reset` | `bool` | `False` | Restart automatically when the timer fires |
+
+### Fire once after a delay
+
+```python
+import PycePlus as pp
+from PycePlus.CORE.timec import Time
+
+pp.window.new("App", width=800, height=600)
+
+def every_second():
+    if Time.wait("intro_delay", 3):
+        print("3 seconds have passed since app start")
+
+pp.mainloop(FPS=60, CALL_PER_SECOND=every_second)
+```
+
+### Fire repeatedly on an interval
+
+Pass `reset=True` to keep the timer repeating:
+
+```python
+def every_second():
+    if Time.wait("autosave", 30, reset=True):
+        save_game()
+```
+
+### Debounce a button
+
+Prevent a button action from firing more than once every 2 seconds:
+
+```python
+from PycePlus.CORE.timec import Time
+
+def on_button_click():
+    if Time.wait("buy_button", 2, reset=False):
+        process_purchase()
+```
+
+<Note>
+  `Time.wait` is designed to be called from `CALL_PER_SECOND` or from event handlers, not from inside the render path. Calling it every frame with a short interval works, but `CALL_PER_SECOND` is a better fit for second-granularity timers.
+</Note>
+
+## Showing elapsed time
+
+```python
+import PycePlus as pp
+from PycePlus.CORE.timec import Time
+
+pp.window.new("Clock", width=400, height=200)
+
+def tick():
+    # Time.format() returns "HH:MM:SS" — use this value in your own rendering
+    print(Time.format())
+
+pp.mainloop(FPS=60, CALL_PER_SECOND=tick)
+```
+
+## Complete timing example
+
+```python
+import PycePlus as pp
+from PycePlus.CORE.timec import Time
+
+pp.window.new("Timer demo", width=600, height=400)
+
+def every_second():
+    # Show elapsed time
+    print(f"uptime: {Time.format()}  ({Time.current_ticks:.2f}s)")
+
+    # Fire once at 10 seconds
+    if Time.wait("greeting", 10):
+        print("App has been running for 10 seconds")
+
+    # Repeat every 5 seconds
+    if Time.wait("pulse", 5, reset=True):
+        print("pulse")
+
+pp.mainloop(FPS=60, CALL_PER_SECOND=every_second)
+```
+
+<Tip>
+  Use different `key` strings for each independent timer. Keys are stored in `Time.keys`, a plain dict, so they persist for the entire session.
+</Tip>

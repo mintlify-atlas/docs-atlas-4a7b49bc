@@ -1,0 +1,80 @@
+---
+title: "mainloop()"
+description: "Reference for the PycePlus application mainloop function"
+---
+
+`mainloop()` is the entry point for the PycePlus render and event loop. It runs indefinitely, driving every system in the framework — input processing, time tracking, network monitoring, resource checks, and rendering — until the application exits.
+
+<Warning>
+  This function never returns. Once called, it runs until the process is terminated or `exit()` is called.
+</Warning>
+
+## Signature
+
+```python
+from PycePlus.CORE.main import mainloop
+
+mainloop(
+    FPS: int = 60,
+    CALL_PER_SECOND: Callable[..., None] | None = None,
+    REVIEW_PATHS: list[str] = [],
+    REVIEW_MAIN_DIR: bool = True,
+)
+```
+
+## Parameters
+
+<ParamField path="FPS" type="int" default="60">
+  Target frames per second. Passed directly to `Application.FPS` and used to throttle the loop via `pygame.time.Clock.tick()`.
+</ParamField>
+
+<ParamField path="CALL_PER_SECOND" type="Callable | None" default="None">
+  An optional callable invoked once per second. Use this for periodic game logic, UI updates, or polling tasks that do not need to run every frame.
+</ParamField>
+
+<ParamField path="REVIEW_PATHS" type="list[str]" default="[]">
+  Additional file system paths for the built-in file watcher to monitor. Each entry is a directory or file path string. Watcher events are exposed on `Application.files` each frame.
+</ParamField>
+
+<ParamField path="REVIEW_MAIN_DIR" type="bool" default="True">
+  When `True`, the file watcher also monitors the main application directory (`--main` flag). Set to `False` to restrict watching to only the paths in `REVIEW_PATHS`.
+</ParamField>
+
+## Frame execution order
+
+Each iteration of the loop executes the following steps in order:
+
+| Step | Description |
+|------|-------------|
+| 1. File watcher poll | `watcher.poll()` is called; results stored in `Application.files`. |
+| 2. Event processing | `events.exam()` processes all pygame events, dispatching registered key, button, and custom event handlers. |
+| 3. Time update | `Time.current_ticks` is updated from `pygame.time.get_ticks()`. If `events.Info.num > 15`, a `system.gui.fatigue` event is emitted. |
+| 4. Per-second callbacks | Once per second: `CALL_PER_SECOND()` is invoked (if set), network connectivity is checked, resource usage is sampled, and system state transitions (`idle` / `suspend` / `resume`) are evaluated. |
+| 5. Network check | `handle_net()` detects connect / disconnect / reconnect transitions and emits the corresponding network events. |
+| 6. Resource monitoring | `handle_usage_memory()` samples disk and memory usage; emits change and low-threshold events as needed. |
+| 7. Render | If `Application.REFRESH` is `True`, the window is cleared and `render.update()` paints the current frame. |
+| 8. Display flip | `pygame.display.flip()` presents the rendered frame; `Application.REFRESH` is reset to `False`. |
+| 9. FPS tick | `CLOCK.tick(Application.FPS)` caps the loop to the configured frame rate. |
+
+## Example
+
+```python
+import PycePlus
+from PycePlus.CORE.main import mainloop
+
+def on_second():
+    # Called once per second — ideal for polling or periodic UI updates
+    print(f"App has been running for {Time.seconds}s")
+
+# Start the application loop at 60 FPS
+mainloop(
+    FPS=60,
+    CALL_PER_SECOND=on_second,
+    REVIEW_PATHS=["assets/", "data/"],
+    REVIEW_MAIN_DIR=True,
+)
+```
+
+<Note>
+  Initialize pygame and create your window before calling `mainloop()`. The function assumes a display surface is already active.
+</Note>
